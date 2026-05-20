@@ -7,14 +7,17 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 export function EncryptionBanner() {
-  const { cryptoStatus, unlock } = useMatrix();
+  const { cryptoStatus, hasKeyThisSession, unlock } = useMatrix();
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
 
   if (!cryptoStatus) return null;
-  const needsUnlock =
-    !cryptoStatus.secretStorageReady || !cryptoStatus.crossSigningReady;
+  const sdkReady =
+    cryptoStatus.secretStorageReady && cryptoStatus.crossSigningReady;
+  const backupExists = !!cryptoStatus.backupVersion;
+  const needsUnlock = !sdkReady || (backupExists && !hasKeyThisSession);
   if (!needsUnlock) return null;
+  const refreshedBackupOnly = sdkReady && backupExists && !hasKeyThisSession;
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,10 +47,15 @@ export function EncryptionBanner() {
           className="flex flex-wrap items-center gap-3 text-sm"
         >
           <div className="flex-1 min-w-[260px]">
-            <div className="font-medium">Encrypted history is locked</div>
+            <div className="font-medium">
+              {refreshedBackupOnly
+                ? "Re-enter your recovery key for this session"
+                : "Encrypted history is locked"}
+            </div>
             <div className="text-xs text-muted-foreground">
-              Enter your Matrix recovery key to decrypt past messages on this
-              browser.
+              {refreshedBackupOnly
+                ? "The page refresh cleared the in-memory recovery key. Type it again so this browser can pull missing message keys from backup."
+                : "Enter your Matrix recovery key to decrypt past messages on this browser."}
             </div>
           </div>
           <Input

@@ -41,6 +41,7 @@ type Ctx = {
   syncState: string | null;
   lastSyncedAt: number | null;
   cryptoStatus: CryptoStatus | null;
+  hasKeyThisSession: boolean;
   ready: boolean;
   notReadyReason: string | null;
   signIn: (input: LoginInput) => Promise<void>;
@@ -68,6 +69,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   const [syncState, setSyncState] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatus | null>(null);
+  const [hasKeyThisSession, setHasKeyThisSession] = useState(false);
   const startedRef = useRef(false);
 
   const refreshCryptoStatus = useCallback(async (c: MatrixClient) => {
@@ -144,6 +146,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     startedRef.current = true;
     const existing = loadSession();
     if (existing) {
+      // Bootstrap a stored session on mount; start() itself drives status transitions.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void start(existing);
     } else {
       setStatus("idle");
@@ -182,6 +186,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     setSyncState(null);
     setLastSyncedAt(null);
     setCryptoStatus(null);
+    setHasKeyThisSession(false);
     setStatus("idle");
   }, [client]);
 
@@ -189,6 +194,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     async (recoveryKey: string) => {
       if (!client) throw new Error("Not signed in.");
       const outcome = await unlockWithSecurityKey(client, recoveryKey);
+      setHasKeyThisSession(true);
       await refreshCryptoStatus(client);
       return outcome;
     },
@@ -232,6 +238,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       syncState,
       lastSyncedAt,
       cryptoStatus,
+      hasKeyThisSession,
       ready,
       notReadyReason,
       signIn,
@@ -246,6 +253,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       syncState,
       lastSyncedAt,
       cryptoStatus,
+      hasKeyThisSession,
       ready,
       notReadyReason,
       signIn,
