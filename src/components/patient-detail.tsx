@@ -12,7 +12,11 @@ import {
   subscribeRooms,
 } from "@/lib/matrix/patients";
 import type { Patient, PatientRecordRevision } from "@/lib/matrix/types";
-import { decryptReason, retryDecrypt } from "@/lib/matrix/decryption";
+import {
+  decryptReason,
+  requestMissingKey,
+  retryDecrypt,
+} from "@/lib/matrix/decryption";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -26,7 +30,6 @@ export function PatientDetail({ roomId }: { roomId: string }) {
   const [history, setHistory] = useState<PatientRecordRevision[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (!client) return;
@@ -85,51 +88,51 @@ export function PatientDetail({ roomId }: { roomId: string }) {
         </Link>
       </div>
 
-      <div className="rounded-lg border bg-card p-6 space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold">{r.name}</h1>
-            <div className="text-xs text-muted-foreground font-mono mt-1">
-              {roomId}
+      <div className="grid gap-6 lg:grid-cols-[6fr_4fr] lg:items-start">
+        <div className="rounded-lg border bg-card p-6 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-semibold">{r.name}</h1>
+              <div className="text-xs text-muted-foreground font-mono mt-1">
+                {roomId}
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <EditPatientDialog roomId={roomId} initial={editInitial} />
+              <Badge>E2E encrypted</Badge>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <EditPatientDialog roomId={roomId} initial={editInitial} />
-            <Badge>E2E encrypted</Badge>
-          </div>
+          <dl className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <dt className="text-muted-foreground">Date of birth</dt>
+              <dd>{r.dob || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Phone</dt>
+              <dd>{r.phone || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Email</dt>
+              <dd>{r.email || "—"}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Updated</dt>
+              <dd>
+                {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
+              </dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="text-muted-foreground">Notes</dt>
+              <dd className="whitespace-pre-wrap">{r.notes || "—"}</dd>
+            </div>
+          </dl>
         </div>
-        <dl className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <dt className="text-muted-foreground">Date of birth</dt>
-            <dd>{r.dob || "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Phone</dt>
-            <dd>{r.phone || "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Email</dt>
-            <dd>{r.email || "—"}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">Updated</dt>
-            <dd>
-              {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
-            </dd>
-          </div>
-          <div className="col-span-2">
-            <dt className="text-muted-foreground">Notes</dt>
-            <dd className="whitespace-pre-wrap">{r.notes || "—"}</dd>
-          </div>
-        </dl>
-      </div>
 
-      <ProfileHistory
-        history={history}
-        currentSelf={session?.userId ?? null}
-        open={historyOpen}
-        onToggle={() => setHistoryOpen((v) => !v)}
-      />
+        <ProfileHistory
+          history={history}
+          currentSelf={session?.userId ?? null}
+        />
+      </div>
 
       <div className="rounded-lg border bg-card">
         <div className="border-b px-4 py-3">
@@ -178,47 +181,68 @@ export function PatientDetail({ roomId }: { roomId: string }) {
                       <div className="text-xs opacity-90">
                         {decryptReason(ev)}
                       </div>
-                      <button
-                        type="button"
-                        className="text-xs underline opacity-80 hover:opacity-100"
-                        onClick={async () => {
-                          console.log("[retry] clicked", {
-                            eventId: ev.getId(),
-                            reason: ev.decryptionFailureReason,
-                          });
-                          if (!client) return;
-                          try {
-                            const r = await retryDecrypt(client, roomId);
-                            if (r.recovered > 0) {
-                              toast.success(
-                                `Recovered ${r.recovered} message${
-                                  r.recovered === 1 ? "" : "s"
-                                }.`,
-                              );
-                            } else if (
-                              ev.decryptionFailureReason?.startsWith(
-                                "HISTORICAL_MESSAGE_BACKUP",
-                              )
-                            ) {
-                              toast.info(
-                                "Still locked. Unlock with your recovery key in the amber banner above.",
-                              );
-                            } else {
-                              toast.info(
-                                `No progress. ${r.failedAfter} message${
-                                  r.failedAfter === 1 ? "" : "s"
-                                } still undecryptable.`,
+                      <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          className="text-xs underline opacity-80 hover:opacity-100"
+                          onClick={async () => {
+                            console.log("[retry] clicked", {
+                              eventId: ev.getId(),
+                              reason: ev.decryptionFailureReason,
+                            });
+                            if (!client) return;
+                            try {
+                              const r = await retryDecrypt(client, roomId);
+                              if (r.recovered > 0) {
+                                toast.success(
+                                  `Recovered ${r.recovered} message${
+                                    r.recovered === 1 ? "" : "s"
+                                  }.`,
+                                );
+                              } else if (
+                                ev.decryptionFailureReason?.startsWith(
+                                  "HISTORICAL_MESSAGE_BACKUP",
+                                )
+                              ) {
+                                toast.info(
+                                  "Still locked. Unlock with your recovery key in the amber banner above.",
+                                );
+                              } else {
+                                toast.info(
+                                  `No progress. ${r.failedAfter} message${
+                                    r.failedAfter === 1 ? "" : "s"
+                                  } still undecryptable.`,
+                                );
+                              }
+                            } catch (err) {
+                              toast.error(
+                                err instanceof Error ? err.message : String(err),
                               );
                             }
-                          } catch (err) {
-                            toast.error(
-                              err instanceof Error ? err.message : String(err),
-                            );
-                          }
-                        }}
-                      >
-                        Retry
-                      </button>
+                          }}
+                        >
+                          Retry
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs underline opacity-80 hover:opacity-100"
+                          onClick={async () => {
+                            if (!client) return;
+                            try {
+                              await requestMissingKey(client, ev);
+                              toast.info(
+                                "Requested key from your other devices. Message will decrypt automatically when it arrives.",
+                              );
+                            } catch (err) {
+                              toast.error(
+                                err instanceof Error ? err.message : String(err),
+                              );
+                            }
+                          }}
+                        >
+                          Request keys
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="whitespace-pre-wrap break-words">
@@ -271,35 +295,22 @@ function diffRevisions(
 function ProfileHistory({
   history,
   currentSelf,
-  open,
-  onToggle,
 }: {
   history: PatientRecordRevision[];
   currentSelf: string | null;
-  open: boolean;
-  onToggle: () => void;
 }) {
-  if (history.length === 0) return null;
   return (
     <div className="rounded-lg border bg-card">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center justify-between border-b px-4 py-3 text-left"
-      >
-        <div>
-          <h2 className="font-semibold">Profile history</h2>
-          <p className="text-xs text-muted-foreground">
-            {history.length} revision{history.length === 1 ? "" : "s"} — newest
-            first
-          </p>
-        </div>
-        <span className="text-sm text-muted-foreground">
-          {open ? "Hide" : "Show"}
-        </span>
-      </button>
-      {open && (
-        <ol className="divide-y">
+      <div className="border-b px-4 py-3">
+        <h2 className="font-semibold">Profile history</h2>
+        <p className="text-xs text-muted-foreground">
+          {history.length === 0
+            ? "No revisions yet."
+            : `${history.length} revision${history.length === 1 ? "" : "s"} — newest first`}
+        </p>
+      </div>
+      {history.length > 0 && (
+        <ol className="divide-y max-h-[480px] overflow-y-auto">
           {history.map((rev, i) => {
             const previous = history[i + 1] ?? null;
             const changes = diffRevisions(rev, previous);

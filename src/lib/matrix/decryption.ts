@@ -1,5 +1,26 @@
 import type { MatrixEvent, MatrixClient } from "matrix-js-sdk";
 
+export async function requestMissingKey(
+  client: MatrixClient,
+  ev: MatrixEvent,
+): Promise<void> {
+  const eventId = ev.getId();
+  const reason = ev.decryptionFailureReason;
+  console.log("[requestMissingKey] start", { eventId, reason });
+  const fn = (
+    client as unknown as {
+      cancelAndResendEventRoomKeyRequest?: (event: MatrixEvent) => Promise<void>;
+    }
+  ).cancelAndResendEventRoomKeyRequest;
+  if (typeof fn !== "function") {
+    throw new Error(
+      "cancelAndResendEventRoomKeyRequest is not available on this client.",
+    );
+  }
+  await fn.call(client, ev);
+  console.log("[requestMissingKey] sent", { eventId });
+}
+
 const REASONS: Record<string, string> = {
   MEGOLM_UNKNOWN_INBOUND_SESSION_ID:
     "No key for this message. Try unlocking with your recovery key.",
