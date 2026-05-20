@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMatrix } from "@/lib/matrix/provider";
 import { Badge } from "@/components/ui/badge";
+import { KeyManagementDialog } from "./key-management";
 
 function formatAgo(ts: number, now: number): string {
   const secs = Math.max(0, Math.floor((now - ts) / 1000));
@@ -86,6 +87,9 @@ export function StatusBar() {
       {!ready && notReadyReason && (
         <span className="text-destructive">{notReadyReason}</span>
       )}
+      <div className="ml-auto">
+        <KeyManagementDialog />
+      </div>
     </div>
   );
 }
