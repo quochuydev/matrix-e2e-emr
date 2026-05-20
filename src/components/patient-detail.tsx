@@ -14,7 +14,7 @@ import {
 import type { Patient, PatientRecordRevision } from "@/lib/matrix/types";
 import {
   decryptReason,
-  requestMissingKey,
+  pullBackupKeys,
   retryDecrypt,
 } from "@/lib/matrix/decryption";
 import { Button } from "@/components/ui/button";
@@ -229,10 +229,24 @@ export function PatientDetail({ roomId }: { roomId: string }) {
                           onClick={async () => {
                             if (!client) return;
                             try {
-                              await requestMissingKey(client, ev);
-                              toast.info(
-                                "Requested key from your other devices. Message will decrypt automatically when it arrives.",
-                              );
+                              const r = await pullBackupKeys(client, roomId);
+                              if (r.recovered > 0) {
+                                toast.success(
+                                  `Pulled ${r.imported} key${
+                                    r.imported === 1 ? "" : "s"
+                                  } from backup. Recovered ${r.recovered} message${
+                                    r.recovered === 1 ? "" : "s"
+                                  }.`,
+                                );
+                              } else if (r.imported > 0) {
+                                toast.info(
+                                  `Pulled ${r.imported} keys from backup but none decrypted this room. Sender may not have uploaded the missing session.`,
+                                );
+                              } else {
+                                toast.info(
+                                  "Backup has no new keys to pull. The sender may not have uploaded this message's session.",
+                                );
+                              }
                             } catch (err) {
                               toast.error(
                                 err instanceof Error ? err.message : String(err),
@@ -240,7 +254,7 @@ export function PatientDetail({ roomId }: { roomId: string }) {
                             }
                           }}
                         >
-                          Request keys
+                          Pull from backup
                         </button>
                       </div>
                     </div>

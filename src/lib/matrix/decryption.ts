@@ -1,24 +1,39 @@
 import type { MatrixEvent, MatrixClient } from "matrix-js-sdk";
 
-export async function requestMissingKey(
+export type PullBackupResult = {
+  imported: number;
+  total: number;
+  recovered: number;
+};
+
+export async function pullBackupKeys(
   client: MatrixClient,
-  ev: MatrixEvent,
-): Promise<void> {
-  const eventId = ev.getId();
-  const reason = ev.decryptionFailureReason;
-  console.log("[requestMissingKey] start", { eventId, reason });
-  const fn = (
-    client as unknown as {
-      cancelAndResendEventRoomKeyRequest?: (event: MatrixEvent) => Promise<void>;
-    }
-  ).cancelAndResendEventRoomKeyRequest;
-  if (typeof fn !== "function") {
-    throw new Error(
-      "cancelAndResendEventRoomKeyRequest is not available on this client.",
-    );
+  roomId: string,
+): Promise<PullBackupResult> {
+  const crypto = client.getCrypto();
+  if (!crypto) {
+    throw new Error("Crypto is not initialized on this client.");
   }
-  await fn.call(client, ev);
-  console.log("[requestMissingKey] sent", { eventId });
+  console.log("[pullBackupKeys] start", { roomId });
+  await crypto.checkKeyBackupAndEnable();
+  const result = await crypto.restoreKeyBackup();
+  console.log("[pullBackupKeys] restored", result);
+
+  const room = client.getRoom(roomId);
+  const failedBefore = room
+    ? room.getLiveTimeline().getEvents().filter((e) => e.isDecryptionFailure()).length
+    : 0;
+  if (room) await room.decryptAllEvents();
+  const failedAfter = room
+    ? room.getLiveTimeline().getEvents().filter((e) => e.isDecryptionFailure()).length
+    : 0;
+  const recovered = Math.max(0, failedBefore - failedAfter);
+  console.log("[pullBackupKeys] done", {
+    imported: result.imported,
+    total: result.total,
+    recovered,
+  });
+  return { imported: result.imported, total: result.total, recovered };
 }
 
 const REASONS: Record<string, string> = {
