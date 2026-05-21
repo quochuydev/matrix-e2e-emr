@@ -190,26 +190,9 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       detachRef.current();
       detachRef.current = null;
     }
-    if (client) {
-      try {
-        await Promise.race([
-          client.logout(true),
-          new Promise((resolve) => setTimeout(resolve, 3000)),
-        ]);
-      } catch {
-        /* ignore — token may already be invalid */
-      }
-      try {
-        client.stopClient();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await client.clearStores();
-      } catch {
-        /* ignore */
-      }
-    }
+    const c = client;
+    // Flip UI back to sign-in screen immediately. SDK cleanup happens in the
+    // background — clearStores() can stall on the rust-crypto IndexedDB.
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
     setClient(null);
     setSession(null);
@@ -219,6 +202,27 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     setHasKeyThisSession(false);
     setPendingBackup(0);
     setStatus("idle");
+
+    if (!c) return;
+    const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+      Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);
+    void (async () => {
+      try {
+        await withTimeout(c.logout(true), 3000);
+      } catch {
+        /* ignore — token may already be invalid */
+      }
+      try {
+        c.stopClient();
+      } catch {
+        /* ignore */
+      }
+      try {
+        await withTimeout(c.clearStores(), 5000);
+      } catch {
+        /* ignore */
+      }
+    })();
   }, [client, pendingBackup]);
 
   const unlock = useCallback(
