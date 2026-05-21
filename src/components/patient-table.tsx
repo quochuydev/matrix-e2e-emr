@@ -11,7 +11,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
@@ -38,7 +37,6 @@ export function PatientTable() {
   const { client, session, signOut, ready, notReadyReason, pendingBackup } =
     useMatrix();
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [filter, setFilter] = useState("");
 
   useEffect(() => {
     if (!client) return;
@@ -46,10 +44,6 @@ export function PatientTable() {
     refresh();
     return subscribeRooms(client, refresh);
   }, [client]);
-
-  const filtered = patients.filter((p) =>
-    p.record.name.toLowerCase().includes(filter.toLowerCase()),
-  );
 
   const onDelete = async (roomId: string, name: string) => {
     if (!client || !ready) return;
@@ -99,13 +93,6 @@ export function PatientTable() {
         </div>
       </div>
 
-      <Input
-        placeholder="Filter by name…"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="max-w-sm"
-      />
-
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -120,7 +107,7 @@ export function PatientTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filtered.length === 0 && (
+            {patients.length === 0 && (
               <TableRow>
                 <TableCell
                   colSpan={7}
@@ -130,7 +117,7 @@ export function PatientTable() {
                 </TableCell>
               </TableRow>
             )}
-            {filtered.map((p) => (
+            {patients.map((p) => (
               <TableRow key={p.roomId}>
                 <TableCell className="font-medium">
                   <Link

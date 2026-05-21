@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMatrix } from "@/lib/matrix/provider";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { toast } from "sonner";
 
 export function EncryptionBanner() {
@@ -58,11 +58,10 @@ export function EncryptionBanner() {
                 : "Enter your Matrix recovery key to decrypt past messages on this browser."}
             </div>
           </div>
-          <Input
+          <PasswordInput
             value={key}
             onChange={(e) => setKey(e.target.value)}
             placeholder="EsTz cDAu oLhr WV1d …"
-            type="password"
             autoComplete="off"
             spellCheck={false}
             className="max-w-xs"

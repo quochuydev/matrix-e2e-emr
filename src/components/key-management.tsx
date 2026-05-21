@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useMatrix } from "@/lib/matrix/provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import {
   Dialog,
@@ -137,9 +138,8 @@ export function KeyManagementDialog() {
             </p>
             <div className="space-y-2">
               <Label htmlFor="exportPass">Passphrase</Label>
-              <Input
+              <PasswordInput
                 id="exportPass"
-                type="password"
                 autoComplete="new-password"
                 value={exportPass}
                 onChange={(e) => setExportPass(e.target.value)}
@@ -168,9 +168,8 @@ export function KeyManagementDialog() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="importPass">Passphrase</Label>
-              <Input
+              <PasswordInput
                 id="importPass"
-                type="password"
                 autoComplete="current-password"
                 value={importPass}
                 onChange={(e) => setImportPass(e.target.value)}
