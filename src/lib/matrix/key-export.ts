@@ -119,7 +119,7 @@ export async function importEncryptedKeys(
   client: MatrixClient,
   fileText: string,
   passphrase: string,
-): Promise<{ total: number }> {
+): Promise<{ total: number; uploadedToBackup: number; backupCount: number }> {
   const crypto = client.getCrypto();
   if (!crypto) throw new Error("Crypto is not initialized on this client.");
 
@@ -176,15 +176,20 @@ export async function importEncryptedKeys(
   const parsed = JSON.parse(json) as unknown[];
   const total = Array.isArray(parsed) ? parsed.length : 0;
 
-  await crypto.importRoomKeysAsJson(json);
-
   await crypto.checkKeyBackupAndEnable();
   const activeVersion = await crypto.getActiveSessionBackupVersion();
   if (!activeVersion) {
     throw new Error(
-      "Imported, but key backup is not active. Enter your recovery key first so these keys also reach backup — otherwise they will be lost on next sign-in.",
+      "Key backup is not active. Enter your recovery key in the banner first, then try importing again.",
     );
   }
+
+  const beforeInfo = await crypto.getKeyBackupInfo();
+  const beforeCount = (beforeInfo?.count as number | undefined) ?? 0;
+  console.log("[importEncryptedKeys] before import: backup count", beforeCount);
+
+  await crypto.importRoomKeysAsJson(json);
+  console.log("[importEncryptedKeys] imported", total, "keys into local store");
 
   // rust-crypto's importRoomKeysAsJson does NOT kick the backup upload loop
   // (only the live-decryption path calls maybeUploadKey). Without this poke,
@@ -196,7 +201,55 @@ export async function importEncryptedKeys(
 
   await waitForBackupDrain(client);
 
-  return { total };
+  const afterInfo = await crypto.getKeyBackupInfo();
+  const afterCount = (afterInfo?.count as number | undefined) ?? 0;
+  const uploadedToBackup = Math.max(0, afterCount - beforeCount);
+  console.log(
+    "[importEncryptedKeys] after drain: backup count",
+    afterCount,
+    "uploaded",
+    uploadedToBackup,
+  );
+
+  if (uploadedToBackup === 0 && total > 0) {
+    throw new Error(
+      `Imported ${total} keys locally but NONE reached backup (server count: ${beforeCount} → ${afterCount}). This means a future sign-in will not see these keys. Check the console for details.`,
+    );
+  }
+
+  return { total, uploadedToBackup, backupCount: afterCount };
+}
+
+export async function pushAllKeysToBackup(
+  client: MatrixClient,
+): Promise<{ before: number; after: number; pushed: number }> {
+  const crypto = client.getCrypto();
+  if (!crypto) throw new Error("Crypto is not initialized on this client.");
+
+  await crypto.checkKeyBackupAndEnable();
+  const activeVersion = await crypto.getActiveSessionBackupVersion();
+  if (!activeVersion) {
+    throw new Error(
+      "Key backup is not active. Enter your recovery key in the banner first.",
+    );
+  }
+
+  const beforeInfo = await crypto.getKeyBackupInfo();
+  const before = (beforeInfo?.count as number | undefined) ?? 0;
+  console.log("[pushAllKeysToBackup] before:", before);
+
+  const backupManager = (crypto as unknown as {
+    backupManager?: { maybeUploadKey?: () => Promise<void> };
+  }).backupManager;
+  await backupManager?.maybeUploadKey?.();
+
+  await waitForBackupDrain(client);
+
+  const afterInfo = await crypto.getKeyBackupInfo();
+  const after = (afterInfo?.count as number | undefined) ?? 0;
+  console.log("[pushAllKeysToBackup] after:", after);
+
+  return { before, after, pushed: Math.max(0, after - before) };
 }
 
 function waitForBackupDrain(client: MatrixClient): Promise<void> {

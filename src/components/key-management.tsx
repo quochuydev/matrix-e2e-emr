@@ -16,6 +16,7 @@ import {
 import {
   exportEncryptedKeys,
   importEncryptedKeys,
+  pushAllKeysToBackup,
 } from "@/lib/matrix/key-export";
 import { toast } from "sonner";
 
@@ -26,6 +27,7 @@ export function KeyManagementDialog() {
   const [importPass, setImportPass] = useState("");
   const [exportBusy, setExportBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const onExport = async () => {
@@ -56,6 +58,27 @@ export function KeyManagementDialog() {
     }
   };
 
+  const onPushAll = async () => {
+    if (!client) return;
+    setPushBusy(true);
+    try {
+      const r = await pushAllKeysToBackup(client);
+      if (r.pushed === 0) {
+        toast.info(
+          `Backup already up to date (${r.after} keys on server). Nothing new to push.`,
+        );
+      } else {
+        toast.success(
+          `Pushed ${r.pushed} new keys to backup (server: ${r.before} → ${r.after}).`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
   const onImport = async () => {
     const file = fileInputRef.current?.files?.[0];
     if (!client || !file || !importPass) return;
@@ -64,7 +87,7 @@ export function KeyManagementDialog() {
       const text = await file.text();
       const r = await importEncryptedKeys(client, text, importPass);
       toast.success(
-        `Imported ${r.total} room key${r.total === 1 ? "" : "s"}. Refresh to see locked messages decrypt.`,
+        `Imported ${r.total} keys locally; pushed ${r.uploadedToBackup} to backup (server now has ${r.backupCount}).`,
       );
       setImportPass("");
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -96,6 +119,17 @@ export function KeyManagementDialog() {
         </DialogHeader>
         <div className="space-y-6">
           <section className="space-y-3">
+            <h3 className="font-semibold text-sm">Push all to backup</h3>
+            <p className="text-xs text-muted-foreground">
+              Send every Megolm session in this browser to the server-side key
+              backup. Run this before signing out so other devices can decrypt
+              your latest data.
+            </p>
+            <Button onClick={onPushAll} disabled={pushBusy}>
+              {pushBusy ? "Pushing…" : "Push everything to backup"}
+            </Button>
+          </section>
+          <section className="space-y-3 border-t pt-4">
             <h3 className="font-semibold text-sm">Export</h3>
             <p className="text-xs text-muted-foreground">
               Pick a passphrase. You&apos;ll need it on the other device to
