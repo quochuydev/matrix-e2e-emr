@@ -35,7 +35,8 @@ function formatDate(ts: number) {
 }
 
 export function PatientTable() {
-  const { client, session, signOut, ready, notReadyReason } = useMatrix();
+  const { client, session, signOut, ready, notReadyReason, pendingBackup } =
+    useMatrix();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [filter, setFilter] = useState("");
 
@@ -74,8 +75,25 @@ export function PatientTable() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => signOut()}>
-            Sign out
+          <Button
+            variant="outline"
+            disabled={pendingBackup > 0}
+            onClick={async () => {
+              try {
+                await signOut();
+              } catch (err) {
+                toast.error(err instanceof Error ? err.message : String(err));
+              }
+            }}
+            title={
+              pendingBackup > 0
+                ? `Backing up ${pendingBackup} message key${pendingBackup === 1 ? "" : "s"}… please wait`
+                : undefined
+            }
+          >
+            {pendingBackup > 0
+              ? `Backing up ${pendingBackup}…`
+              : "Sign out"}
           </Button>
           <NewPatientDialog />
         </div>

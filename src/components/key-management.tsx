@@ -68,6 +68,7 @@ export function KeyManagementDialog() {
       );
       setImportPass("");
       if (fileInputRef.current) fileInputRef.current.value = "";
+      setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {

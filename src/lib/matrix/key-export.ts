@@ -1,4 +1,5 @@
 import type { MatrixClient } from "matrix-js-sdk";
+import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api";
 
 const HEADER = "-----BEGIN MEGOLM SESSION DATA-----";
 const TRAILER = "-----END MEGOLM SESSION DATA-----";
@@ -176,5 +177,40 @@ export async function importEncryptedKeys(
   const total = Array.isArray(parsed) ? parsed.length : 0;
 
   await crypto.importRoomKeysAsJson(json);
+
+  await crypto.checkKeyBackupAndEnable();
+  const activeVersion = await crypto.getActiveSessionBackupVersion();
+  if (!activeVersion) {
+    throw new Error(
+      "Imported, but key backup is not active. Enter your recovery key first so these keys also reach backup — otherwise they will be lost on next sign-in.",
+    );
+  }
+
+  // rust-crypto's importRoomKeysAsJson does NOT kick the backup upload loop
+  // (only the live-decryption path calls maybeUploadKey). Without this poke,
+  // imported keys sit in local store and never reach the server.
+  const backupManager = (crypto as unknown as {
+    backupManager?: { maybeUploadKey?: () => Promise<void> };
+  }).backupManager;
+  await backupManager?.maybeUploadKey?.();
+
+  await waitForBackupDrain(client);
+
   return { total };
+}
+
+function waitForBackupDrain(client: MatrixClient): Promise<void> {
+  return new Promise((resolve) => {
+    const handler = (remaining: number) => {
+      if (remaining === 0) {
+        client.off(CryptoEvent.KeyBackupSessionsRemaining, handler);
+        resolve();
+      }
+    };
+    client.on(CryptoEvent.KeyBackupSessionsRemaining, handler);
+    setTimeout(() => {
+      client.off(CryptoEvent.KeyBackupSessionsRemaining, handler);
+      resolve();
+    }, 60_000);
+  });
 }

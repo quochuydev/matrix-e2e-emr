@@ -42,6 +42,7 @@ type Ctx = {
   lastSyncedAt: number | null;
   cryptoStatus: CryptoStatus | null;
   hasKeyThisSession: boolean;
+  pendingBackup: number;
   ready: boolean;
   notReadyReason: string | null;
   signIn: (input: LoginInput) => Promise<void>;
@@ -70,6 +71,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatus | null>(null);
   const [hasKeyThisSession, setHasKeyThisSession] = useState(false);
+  const [pendingBackup, setPendingBackup] = useState(0);
   const startedRef = useRef(false);
 
   const refreshCryptoStatus = useCallback(async (c: MatrixClient) => {
@@ -100,12 +102,16 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const onCrypto = () => {
         void refreshCryptoStatus(c);
       };
+      const onRemaining = (remaining: number) => {
+        setPendingBackup(remaining);
+      };
 
       c.on(ClientEvent.Sync, onSync);
       c.on(CryptoEvent.KeysChanged, onCrypto);
       c.on(CryptoEvent.KeyBackupStatus, onCrypto);
       c.on(CryptoEvent.KeyBackupDecryptionKeyCached, onCrypto);
       c.on(CryptoEvent.DevicesUpdated, onCrypto);
+      c.on(CryptoEvent.KeyBackupSessionsRemaining, onRemaining);
 
       return () => {
         c.off(ClientEvent.Sync, onSync);
@@ -113,6 +119,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         c.off(CryptoEvent.KeyBackupStatus, onCrypto);
         c.off(CryptoEvent.KeyBackupDecryptionKeyCached, onCrypto);
         c.off(CryptoEvent.DevicesUpdated, onCrypto);
+        c.off(CryptoEvent.KeyBackupSessionsRemaining, onRemaining);
       };
     },
     [refreshCryptoStatus],
@@ -154,6 +161,16 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   }, [start]);
 
+  useEffect(() => {
+    if (pendingBackup <= 0) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [pendingBackup]);
+
   const signIn = useCallback(
     async (input: LoginInput) => {
       const s = await loginWithPassword(input);
@@ -164,15 +181,28 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    if (pendingBackup > 0) {
+      throw new Error(
+        `Hold on — ${pendingBackup} message key${pendingBackup === 1 ? "" : "s"} still uploading to backup. Wait a moment, otherwise you'll lose access to recent messages.`,
+      );
+    }
     if (detachRef.current) {
       detachRef.current();
       detachRef.current = null;
     }
     if (client) {
       try {
-        await client.logout(true);
+        await Promise.race([
+          client.logout(true),
+          new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
       } catch {
         /* ignore — token may already be invalid */
+      }
+      try {
+        client.stopClient();
+      } catch {
+        /* ignore */
       }
       try {
         await client.clearStores();
@@ -187,8 +217,9 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     setLastSyncedAt(null);
     setCryptoStatus(null);
     setHasKeyThisSession(false);
+    setPendingBackup(0);
     setStatus("idle");
-  }, [client]);
+  }, [client, pendingBackup]);
 
   const unlock = useCallback(
     async (recoveryKey: string) => {
@@ -239,6 +270,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt,
       cryptoStatus,
       hasKeyThisSession,
+      pendingBackup,
       ready,
       notReadyReason,
       signIn,
@@ -254,6 +286,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       lastSyncedAt,
       cryptoStatus,
       hasKeyThisSession,
+      pendingBackup,
       ready,
       notReadyReason,
       signIn,

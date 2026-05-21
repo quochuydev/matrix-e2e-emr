@@ -45,6 +45,7 @@ export function StatusBar() {
     session,
     ready,
     notReadyReason,
+    pendingBackup,
   } = useMatrix();
   const [now, setNow] = useState(() => Date.now());
 
@@ -74,6 +75,11 @@ export function StatusBar() {
       <Badge variant={backupOn ? "default" : "secondary"}>
         {backupOn ? `Backup v${cryptoStatus?.backupVersion}` : "No backup"}
       </Badge>
+      {backupOn && pendingBackup > 0 && (
+        <Badge variant="secondary">
+          Uploading {pendingBackup} key{pendingBackup === 1 ? "" : "s"}…
+        </Badge>
+      )}
       {lastSyncedAt && (
         <span className="text-muted-foreground">
           synced {formatAgo(lastSyncedAt, now)}
