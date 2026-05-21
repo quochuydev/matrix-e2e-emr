@@ -126,12 +126,20 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   );
 
   const detachRef = useRef<(() => void) | null>(null);
+  const cleanupRef = useRef<Promise<void> | null>(null);
 
   const start = useCallback(
     async (s: StoredSession) => {
       setStatus("connecting");
       setError(null);
       try {
+        // If a previous sign-out is still cleaning up IndexedDB in the
+        // background, wait for it before starting a fresh client. Otherwise
+        // the new client deadlocks on a locked store.
+        if (cleanupRef.current) {
+          await cleanupRef.current;
+          cleanupRef.current = null;
+        }
         const c = await createMatrixClient(s);
         detachRef.current = await attachListeners(c);
         setClient(c);
@@ -206,7 +214,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     if (!c) return;
     const withTimeout = <T,>(p: Promise<T>, ms: number) =>
       Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);
-    void (async () => {
+    cleanupRef.current = (async () => {
       try {
         await withTimeout(c.logout(true), 3000);
       } catch {

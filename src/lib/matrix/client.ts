@@ -50,9 +50,18 @@ async function waitForPrepared(client: MatrixClient): Promise<void> {
   const sdk = await import("matrix-js-sdk");
   const { ClientEvent, SyncState } = sdk;
   if (client.getSyncState() === SyncState.Prepared) return;
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      client.off(ClientEvent.Sync, handler);
+      reject(
+        new Error(
+          "Timed out waiting for first sync. Check network, then refresh.",
+        ),
+      );
+    }, 30_000);
     const handler = (state: string) => {
       if (state === SyncState.Prepared || state === SyncState.Syncing) {
+        clearTimeout(timer);
         client.off(ClientEvent.Sync, handler);
         resolve();
       }
