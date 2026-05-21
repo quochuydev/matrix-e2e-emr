@@ -21,24 +21,48 @@ import {
 } from "@/lib/matrix/key-export";
 import { toast } from "sonner";
 
-export function KeyManagementDialog() {
+export function PushToBackupButton() {
+  const { client } = useMatrix();
+  const [busy, setBusy] = useState(false);
+
+  const onClick = async () => {
+    if (!client) return;
+    setBusy(true);
+    try {
+      const r = await pushAllKeysToBackup(client);
+      const stats = `Local: ${r.localTotal} sessions (${r.localBackedUp} marked backed-up). Server: ${r.after}.`;
+      if (r.pushed === 0) {
+        toast.info(`Nothing new to push. ${stats}`);
+      } else {
+        toast.success(
+          `Pushed ${r.pushed} new keys (${r.before} → ${r.after}). ${stats}`,
+        );
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button variant="outline" size="sm" onClick={onClick} disabled={busy}>
+      {busy ? "Pushing…" : "Push to backup"}
+    </Button>
+  );
+}
+
+export function ExportKeysDialog() {
   const { client } = useMatrix();
   const [open, setOpen] = useState(false);
-  const [exportPass, setExportPass] = useState("");
-  const [importPass, setImportPass] = useState("");
-  const [exportBusy, setExportBusy] = useState(false);
-  const [importBusy, setImportBusy] = useState(false);
-  const [pushBusy, setPushBusy] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pass, setPass] = useState("");
+  const [busy, setBusy] = useState(false);
 
   const onExport = async () => {
-    if (!client || !exportPass) return;
-    setExportBusy(true);
+    if (!client || !pass) return;
+    setBusy(true);
     try {
-      const { blob, sessionCount } = await exportEncryptedKeys(
-        client,
-        exportPass,
-      );
+      const { blob, sessionCount } = await exportEncryptedKeys(client, pass);
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -51,52 +75,12 @@ export function KeyManagementDialog() {
       toast.success(
         `Exported ${sessionCount} room key${sessionCount === 1 ? "" : "s"}. Keep the file safe.`,
       );
-      setExportPass("");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setExportBusy(false);
-    }
-  };
-
-  const onPushAll = async () => {
-    if (!client) return;
-    setPushBusy(true);
-    try {
-      const r = await pushAllKeysToBackup(client);
-      if (r.pushed === 0) {
-        toast.info(
-          `Backup already up to date (${r.after} keys on server). Nothing new to push.`,
-        );
-      } else {
-        toast.success(
-          `Pushed ${r.pushed} new keys to backup (server: ${r.before} → ${r.after}).`,
-        );
-      }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const onImport = async () => {
-    const file = fileInputRef.current?.files?.[0];
-    if (!client || !file || !importPass) return;
-    setImportBusy(true);
-    try {
-      const text = await file.text();
-      const r = await importEncryptedKeys(client, text, importPass);
-      toast.success(
-        `Imported ${r.total} keys locally; pushed ${r.uploadedToBackup} to backup (server now has ${r.backupCount}).`,
-      );
-      setImportPass("");
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setPass("");
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
-      setImportBusy(false);
+      setBusy(false);
     }
   };
 
@@ -105,80 +89,103 @@ export function KeyManagementDialog() {
       <DialogTrigger
         render={
           <Button variant="outline" size="sm">
-            Keys
+            Export
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="sm:max-w-[420px]">
         <DialogHeader>
-          <DialogTitle>Encryption keys</DialogTitle>
+          <DialogTitle>Export encryption keys</DialogTitle>
           <DialogDescription>
-            Export this browser&apos;s room keys to a file, or import keys from
-            another device. File format matches Element&apos;s Export E2E Room
-            Keys.
+            Save this browser&apos;s room keys to a file. Pick a passphrase
+            you&apos;ll re-enter on the other device to import.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-6">
-          <section className="space-y-3">
-            <h3 className="font-semibold text-sm">Push all to backup</h3>
-            <p className="text-xs text-muted-foreground">
-              Send every Megolm session in this browser to the server-side key
-              backup. Run this before signing out so other devices can decrypt
-              your latest data.
-            </p>
-            <Button onClick={onPushAll} disabled={pushBusy}>
-              {pushBusy ? "Pushing…" : "Push everything to backup"}
-            </Button>
-          </section>
-          <section className="space-y-3 border-t pt-4">
-            <h3 className="font-semibold text-sm">Export</h3>
-            <p className="text-xs text-muted-foreground">
-              Pick a passphrase. You&apos;ll need it on the other device to
-              import.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="exportPass">Passphrase</Label>
-              <PasswordInput
-                id="exportPass"
-                autoComplete="new-password"
-                value={exportPass}
-                onChange={(e) => setExportPass(e.target.value)}
-              />
-            </div>
-            <Button
-              onClick={onExport}
-              disabled={exportBusy || exportPass.length < 4}
-            >
-              {exportBusy ? "Exporting…" : "Export keys"}
-            </Button>
-          </section>
-          <section className="space-y-3 border-t pt-4">
-            <h3 className="font-semibold text-sm">Import</h3>
-            <p className="text-xs text-muted-foreground">
-              Choose a file exported from this account on another device.
-            </p>
-            <div className="space-y-2">
-              <Label htmlFor="importFile">Key file</Label>
-              <Input
-                id="importFile"
-                type="file"
-                accept=".txt,text/plain"
-                ref={fileInputRef}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="importPass">Passphrase</Label>
-              <PasswordInput
-                id="importPass"
-                autoComplete="current-password"
-                value={importPass}
-                onChange={(e) => setImportPass(e.target.value)}
-              />
-            </div>
-            <Button onClick={onImport} disabled={importBusy || !importPass}>
-              {importBusy ? "Importing…" : "Import keys"}
-            </Button>
-          </section>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="exportPass">Passphrase</Label>
+            <PasswordInput
+              id="exportPass"
+              autoComplete="new-password"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+            />
+          </div>
+          <Button onClick={onExport} disabled={busy || pass.length < 4}>
+            {busy ? "Exporting…" : "Export keys"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function ImportKeysDialog() {
+  const { client } = useMatrix();
+  const [open, setOpen] = useState(false);
+  const [pass, setPass] = useState("");
+  const [busy, setBusy] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const onImport = async () => {
+    const file = fileInputRef.current?.files?.[0];
+    if (!client || !file || !pass) return;
+    setBusy(true);
+    try {
+      const text = await file.text();
+      const r = await importEncryptedKeys(client, text, pass);
+      toast.success(
+        `Imported ${r.total} keys locally; pushed ${r.uploadedToBackup} to backup (server now has ${r.backupCount}).`,
+      );
+      setPass("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      setOpen(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger
+        render={
+          <Button variant="outline" size="sm">
+            Import
+          </Button>
+        }
+      />
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle>Import encryption keys</DialogTitle>
+          <DialogDescription>
+            Load room keys from a file exported on another device. Format
+            matches Element&apos;s Export E2E Room Keys.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="importFile">Key file</Label>
+            <Input
+              id="importFile"
+              type="file"
+              accept=".txt,text/plain"
+              ref={fileInputRef}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="importPass">Passphrase</Label>
+            <PasswordInput
+              id="importPass"
+              autoComplete="current-password"
+              value={pass}
+              onChange={(e) => setPass(e.target.value)}
+            />
+          </div>
+          <Button onClick={onImport} disabled={busy || !pass}>
+            {busy ? "Importing…" : "Import keys"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

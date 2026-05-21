@@ -222,7 +222,13 @@ export async function importEncryptedKeys(
 
 export async function pushAllKeysToBackup(
   client: MatrixClient,
-): Promise<{ before: number; after: number; pushed: number }> {
+): Promise<{
+  before: number;
+  after: number;
+  pushed: number;
+  localTotal: number;
+  localBackedUp: number;
+}> {
   const crypto = client.getCrypto();
   if (!crypto) throw new Error("Crypto is not initialized on this client.");
 
@@ -234,9 +240,19 @@ export async function pushAllKeysToBackup(
     );
   }
 
+  const olmMachine = (crypto as unknown as {
+    olmMachine?: {
+      roomKeyCounts?: () => Promise<{ backedUp: number; total: number }>;
+    };
+  }).olmMachine;
+
+  const beforeLocal = (await olmMachine?.roomKeyCounts?.()) ?? {
+    backedUp: 0,
+    total: 0,
+  };
   const beforeInfo = await crypto.getKeyBackupInfo();
   const before = (beforeInfo?.count as number | undefined) ?? 0;
-  console.log("[pushAllKeysToBackup] before:", before);
+  console.log("[pushAllKeysToBackup] server:", before, "local:", beforeLocal);
 
   const backupManager = (crypto as unknown as {
     backupManager?: { maybeUploadKey?: () => Promise<void> };
@@ -245,11 +261,21 @@ export async function pushAllKeysToBackup(
 
   await waitForBackupDrain(client);
 
+  const afterLocal = (await olmMachine?.roomKeyCounts?.()) ?? {
+    backedUp: 0,
+    total: 0,
+  };
   const afterInfo = await crypto.getKeyBackupInfo();
   const after = (afterInfo?.count as number | undefined) ?? 0;
-  console.log("[pushAllKeysToBackup] after:", after);
+  console.log("[pushAllKeysToBackup] after server:", after, "local:", afterLocal);
 
-  return { before, after, pushed: Math.max(0, after - before) };
+  return {
+    before,
+    after,
+    pushed: Math.max(0, after - before),
+    localTotal: afterLocal.total,
+    localBackedUp: afterLocal.backedUp,
+  };
 }
 
 function waitForBackupDrain(client: MatrixClient): Promise<void> {

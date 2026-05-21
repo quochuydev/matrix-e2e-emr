@@ -90,7 +90,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   const attachListeners = useCallback(
     async (c: MatrixClient) => {
       const sdk = await import("matrix-js-sdk");
-      const { ClientEvent } = sdk;
+      const { ClientEvent, HttpApiEvent } = sdk;
       const { CryptoEvent } = await import("matrix-js-sdk/lib/crypto-api");
 
       const onSync = (state: string) => {
@@ -105,6 +105,20 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const onRemaining = (remaining: number) => {
         setPendingBackup(remaining);
       };
+      const onLoggedOut = () => {
+        // Server rejected our access token (revoked elsewhere or expired).
+        // Drop local session so the UI returns to the sign-in screen instead
+        // of hanging on dead requests.
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        setClient(null);
+        setSession(null);
+        setSyncState(null);
+        setLastSyncedAt(null);
+        setCryptoStatus(null);
+        setHasKeyThisSession(false);
+        setPendingBackup(0);
+        setStatus("idle");
+      };
 
       c.on(ClientEvent.Sync, onSync);
       c.on(CryptoEvent.KeysChanged, onCrypto);
@@ -112,6 +126,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       c.on(CryptoEvent.KeyBackupDecryptionKeyCached, onCrypto);
       c.on(CryptoEvent.DevicesUpdated, onCrypto);
       c.on(CryptoEvent.KeyBackupSessionsRemaining, onRemaining);
+      c.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
 
       return () => {
         c.off(ClientEvent.Sync, onSync);
@@ -120,6 +135,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         c.off(CryptoEvent.KeyBackupDecryptionKeyCached, onCrypto);
         c.off(CryptoEvent.DevicesUpdated, onCrypto);
         c.off(CryptoEvent.KeyBackupSessionsRemaining, onRemaining);
+        c.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
       };
     },
     [refreshCryptoStatus],

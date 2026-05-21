@@ -10,6 +10,7 @@ import {
   type MatrixEvent,
   type Room,
 } from "matrix-js-sdk";
+import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api";
 import {
   PATIENT_RECORD_EVENT_TYPE,
   PATIENT_TAG,
@@ -41,6 +42,37 @@ function sendCustomEvent(
       content: Record<string, unknown>,
     ) => Promise<{ event_id: string }>
   )(roomId, eventType, content);
+}
+
+async function waitForBackupDrain(
+  client: MatrixClient,
+  timeoutMs = 30_000,
+): Promise<void> {
+  return new Promise((resolve) => {
+    const handler = (remaining: number) => {
+      if (remaining === 0) {
+        client.off(CryptoEvent.KeyBackupSessionsRemaining, handler);
+        resolve();
+      }
+    };
+    client.on(CryptoEvent.KeyBackupSessionsRemaining, handler);
+    setTimeout(() => {
+      client.off(CryptoEvent.KeyBackupSessionsRemaining, handler);
+      resolve();
+    }, timeoutMs);
+  });
+}
+
+async function ensureSessionInBackup(client: MatrixClient): Promise<void> {
+  const crypto = client.getCrypto();
+  if (!crypto) return;
+  const activeVersion = await crypto.getActiveSessionBackupVersion();
+  if (!activeVersion) return; // backup not active — nothing we can do here
+  const backupManager = (crypto as unknown as {
+    backupManager?: { maybeUploadKey?: () => Promise<void> };
+  }).backupManager;
+  await backupManager?.maybeUploadKey?.();
+  await waitForBackupDrain(client);
 }
 
 function sendCustomStateEvent(
@@ -163,6 +195,8 @@ export async function createPatient(
     rootEventId,
   });
 
+  await ensureSessionInBackup(client);
+
   return roomId;
 }
 
@@ -203,6 +237,8 @@ export async function updatePatient(
       /* non-fatal — room name is a nicety, the record event is the source of truth */
     }
   }
+
+  await ensureSessionInBackup(client);
 }
 
 function findOldestRecordEventId(
