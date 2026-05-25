@@ -186,6 +186,20 @@ export async function unlockWithSecurityKey(
     LOG_ERR("bootstrapCrossSigning failed (non-fatal)", e);
   }
 
+  // bootstrapCrossSigning is a no-op when cross-signing already exists on the
+  // account (set up on another device), so this device's signature would never
+  // get uploaded — it'd show up as "unverified" to itself and to other users.
+  // Sign explicitly using the SSK we just loaded from SSSS.
+  const deviceId = client.getDeviceId();
+  if (deviceId) {
+    try {
+      await crypto.crossSignDevice(deviceId);
+      LOG("crossSignDevice ok for", deviceId);
+    } catch (e) {
+      LOG_ERR("crossSignDevice failed (non-fatal)", e);
+    }
+  }
+
   let keyBackupRestored: UnlockOutcome["keyBackupRestored"] = null;
   const beforeBackupVersion = await crypto.getActiveSessionBackupVersion();
   LOG("active backup version (before) =", beforeBackupVersion);
