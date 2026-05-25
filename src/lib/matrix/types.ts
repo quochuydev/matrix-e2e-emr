@@ -3,13 +3,19 @@ export const PATIENT_RECORD_EVENT_TYPE = "com.matrix-app.patient.record";
 export const PROFILE_THREAD_STATE_TYPE = "com.matrix-app.patient.profile-thread";
 
 export type PatientRecord = {
-  name: string;
+  firstName: string;
+  lastName: string;
   dob?: string;
   phone?: string;
   email?: string;
   notes?: string;
-  updatedAt: number;
+  updatedAt: string;
+  updatedTimes: number;
 };
+
+export function fullName(r: { firstName: string; lastName: string }): string {
+  return `${r.firstName} ${r.lastName}`.trim();
+}
 
 export type PatientRecordRevision = PatientRecord & {
   eventId: string;
@@ -21,6 +27,12 @@ export type PatientRecordRevision = PatientRecord & {
 export type Patient = {
   roomId: string;
   record: PatientRecord;
+};
+
+export type PendingInvite = {
+  roomId: string;
+  name: string;
+  inviterId: string | null;
 };
 
 export type StoredSession = {

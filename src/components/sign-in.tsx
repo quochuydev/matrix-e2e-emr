@@ -32,7 +32,7 @@ export function SignIn() {
         username: username.trim(),
         password,
       });
-      toast.success("Signed in to Matrix");
+      toast.success("Signed in. Enter your recovery key from the status bar to unlock encrypted history.");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -101,10 +101,6 @@ export function SignIn() {
         >
           {submitting || status === "connecting" ? "Signing in…" : "Sign in"}
         </Button>
-        <p className="text-xs text-muted-foreground">
-          After sign-in, use <b>Security key</b> in the top bar to unlock
-          encrypted history from another device.
-        </p>
       </form>
     </div>
   );

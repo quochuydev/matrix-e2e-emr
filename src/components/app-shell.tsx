@@ -3,7 +3,6 @@
 import { useMatrix } from "@/lib/matrix/provider";
 import { SignIn } from "./sign-in";
 import { StatusBar } from "./status-bar";
-import { EncryptionBanner } from "./encryption-banner";
 import { FullPageLoader } from "./full-page-loader";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -42,7 +41,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           <StatusBar />
         </div>
       </header>
-      <EncryptionBanner />
       <main className="flex-1 mx-auto w-full max-w-6xl p-8">{children}</main>
     </div>
   );

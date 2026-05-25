@@ -11,12 +11,7 @@ import {
   sendMessage,
   subscribeRooms,
 } from "@/lib/matrix/patients";
-import type { Patient, PatientRecordRevision } from "@/lib/matrix/types";
-import {
-  decryptReason,
-  pullBackupKeys,
-  retryDecrypt,
-} from "@/lib/matrix/decryption";
+import { fullName, type Patient, type PatientRecordRevision } from "@/lib/matrix/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -45,7 +40,8 @@ export function PatientDetail({ roomId }: { roomId: string }) {
   const editInitial = useMemo(() => {
     const r = patient?.record;
     return {
-      name: r?.name ?? "",
+      firstName: r?.firstName ?? "",
+      lastName: r?.lastName ?? "",
       dob: r?.dob ?? "",
       phone: r?.phone ?? "",
       email: r?.email ?? "",
@@ -92,7 +88,7 @@ export function PatientDetail({ roomId }: { roomId: string }) {
         <div className="rounded-lg border bg-card p-6 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-semibold">{r.name}</h1>
+              <h1 className="text-2xl font-semibold">{fullName(r)}</h1>
               <div className="text-xs text-muted-foreground font-mono mt-1">
                 {roomId}
               </div>
@@ -120,6 +116,10 @@ export function PatientDetail({ roomId }: { roomId: string }) {
               <dd>
                 {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
               </dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Times updated</dt>
+              <dd className="font-mono">{r.updatedTimes}</dd>
             </div>
             <div className="col-span-2">
               <dt className="text-muted-foreground">Notes</dt>
@@ -150,11 +150,16 @@ export function PatientDetail({ roomId }: { roomId: string }) {
           {messages.map((ev) => {
             const sender = ev.getSender();
             const isMe = sender === session?.userId;
-            const failed = ev.isDecryptionFailure();
-            const content = ev.getContent() as {
-              body?: string;
-              msgtype?: string;
-            };
+            if (ev.isDecryptionFailure()) {
+              return (
+                <UndecryptableMessage
+                  key={ev.getId()}
+                  event={ev}
+                  isMe={isMe}
+                />
+              );
+            }
+            const content = ev.getContent() as { body?: string };
             const body = content.body ?? "";
             return (
               <div
@@ -163,106 +168,13 @@ export function PatientDetail({ roomId }: { roomId: string }) {
               >
                 <div
                   className={`max-w-[75%] rounded-lg px-3 py-2 ${
-                    failed
-                      ? "bg-destructive/10 text-destructive"
-                      : isMe
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted"
+                    isMe ? "bg-primary text-primary-foreground" : "bg-muted"
                   }`}
                 >
-                  {!isMe && !failed && (
+                  {!isMe && (
                     <div className="text-xs opacity-70 mb-1">{sender}</div>
                   )}
-                  {failed ? (
-                    <div className="space-y-1">
-                      <div className="text-xs font-medium">
-                        Can&apos;t decrypt
-                      </div>
-                      <div className="text-xs opacity-90">
-                        {decryptReason(ev)}
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          className="text-xs underline opacity-80 hover:opacity-100"
-                          onClick={async () => {
-                            console.log("[retry] clicked", {
-                              eventId: ev.getId(),
-                              reason: ev.decryptionFailureReason,
-                            });
-                            if (!client) return;
-                            try {
-                              const r = await retryDecrypt(client, roomId);
-                              if (r.recovered > 0) {
-                                toast.success(
-                                  `Recovered ${r.recovered} message${
-                                    r.recovered === 1 ? "" : "s"
-                                  }.`,
-                                );
-                              } else if (
-                                ev.decryptionFailureReason?.startsWith(
-                                  "HISTORICAL_MESSAGE_BACKUP",
-                                )
-                              ) {
-                                toast.info(
-                                  "Still locked. Unlock with your recovery key in the amber banner above.",
-                                );
-                              } else {
-                                toast.info(
-                                  `No progress. ${r.failedAfter} message${
-                                    r.failedAfter === 1 ? "" : "s"
-                                  } still undecryptable.`,
-                                );
-                              }
-                            } catch (err) {
-                              toast.error(
-                                err instanceof Error ? err.message : String(err),
-                              );
-                            }
-                          }}
-                        >
-                          Retry
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs underline opacity-80 hover:opacity-100"
-                          onClick={async () => {
-                            if (!client) return;
-                            try {
-                              const r = await pullBackupKeys(client, roomId);
-                              if (r.recovered > 0) {
-                                toast.success(
-                                  `Pulled ${r.imported} key${
-                                    r.imported === 1 ? "" : "s"
-                                  } from backup. Recovered ${r.recovered} message${
-                                    r.recovered === 1 ? "" : "s"
-                                  }.`,
-                                );
-                              } else if (r.imported > 0) {
-                                toast.info(
-                                  `Pulled ${r.imported} keys from backup but none decrypted this room. Sender may not have uploaded the missing session.`,
-                                );
-                              } else {
-                                toast.info(
-                                  "Backup has no new keys to pull. The sender may not have uploaded this message's session.",
-                                );
-                              }
-                            } catch (err) {
-                              toast.error(
-                                err instanceof Error ? err.message : String(err),
-                              );
-                            }
-                          }}
-                        >
-                          Pull from backup
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="whitespace-pre-wrap break-words">
-                      {body}
-                    </div>
-                  )}
+                  <div className="whitespace-pre-wrap break-words">{body}</div>
                 </div>
               </div>
             );
@@ -272,7 +184,9 @@ export function PatientDetail({ roomId }: { roomId: string }) {
           <Input
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={ready ? "Type a message…" : (notReadyReason ?? "Not ready")}
+            placeholder={
+              ready ? "Type a message…" : (notReadyReason ?? "Not ready")
+            }
             disabled={sending || !ready}
             title={notReadyReason ?? undefined}
           />
@@ -289,7 +203,106 @@ export function PatientDetail({ roomId }: { roomId: string }) {
   );
 }
 
-const RECORD_FIELDS = ["name", "dob", "phone", "email", "notes"] as const;
+const FAILURE_HINTS: Record<string, string> = {
+  MEGOLM_UNKNOWN_INBOUND_SESSION_ID:
+    "This device never received the session key. The sender likely hasn't (yet) uploaded it to backup, or didn't share it with this device.",
+  MEGOLM_KEY_WITHHELD:
+    "The sender explicitly refused to share the session key with this device.",
+  MEGOLM_KEY_WITHHELD_FOR_UNVERIFIED_DEVICE:
+    "The sender refused to share the key because this device isn't verified.",
+  OLM_UNKNOWN_MESSAGE_INDEX:
+    "We have the session, but it was shared at a later ratchet index than this message. The earlier ratchet is only retrievable from key backup.",
+  HISTORICAL_MESSAGE_NO_KEY_BACKUP:
+    "Sent before this device logged in, and there's no key backup on the server.",
+  HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED:
+    "Sent before this device logged in. A backup exists, but this device doesn't have the backup decryption key.",
+  HISTORICAL_MESSAGE_WORKING_BACKUP:
+    "Sent before this device logged in. Backup is working but the key hasn't been fetched yet (or isn't in backup).",
+  HISTORICAL_MESSAGE_USER_NOT_JOINED:
+    "Sent when this user wasn't a member of the room.",
+  SENDER_IDENTITY_PREVIOUSLY_VERIFIED:
+    "Sender's identity changed after previously being verified.",
+  UNSIGNED_SENDER_DEVICE: "Sender's device isn't cross-signed.",
+  UNKNOWN_SENDER_DEVICE: "Sender's device is unknown.",
+  UNKNOWN_ERROR: "Unclassified decryption error.",
+};
+
+function UndecryptableMessage({
+  event,
+  isMe,
+}: {
+  event: MatrixEvent;
+  isMe: boolean;
+}) {
+  const wire = event.getWireContent() as {
+    session_id?: string;
+    sender_key?: string;
+    device_id?: string;
+    algorithm?: string;
+  };
+  const code = event.decryptionFailureReason ?? "UNKNOWN_ERROR";
+  const hint = FAILURE_HINTS[code] ?? "";
+  const eventId = event.getId() ?? "";
+  const sender = event.getSender() ?? "";
+  const ts = event.getTs();
+  const lines = [
+    `code:       ${code}`,
+    `event_id:   ${eventId}`,
+    `sender:     ${sender}`,
+    `device_id:  ${wire.device_id ?? "—"}`,
+    `session_id: ${wire.session_id ?? "—"}`,
+    `sender_key: ${wire.sender_key ?? "—"}`,
+    `algorithm:  ${wire.algorithm ?? "—"}`,
+    `timestamp:  ${ts ? new Date(ts).toISOString() : "—"}`,
+  ];
+  const block = lines.join("\n");
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(block);
+      toast.success("Diagnostic copied");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+  return (
+    <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+      <div className="max-w-[85%] rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 space-y-2">
+        <div className="flex items-center gap-2">
+          <Badge variant="destructive" className="text-xs">
+            Unable to decrypt
+          </Badge>
+          <span className="font-mono text-xs">{code}</span>
+        </div>
+        {hint && (
+          <div className="text-xs text-muted-foreground">{hint}</div>
+        )}
+        <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-background/60 rounded px-2 py-1.5">
+          {block}
+        </pre>
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={onCopy}
+          >
+            Copy diagnostic
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const RECORD_FIELDS = [
+  "firstName",
+  "lastName",
+  "dob",
+  "phone",
+  "email",
+  "notes",
+] as const;
 type RecordField = (typeof RECORD_FIELDS)[number];
 
 function diffRevisions(
@@ -348,8 +361,8 @@ function ProfileHistory({
                 </div>
                 {rev.isRoot || !previous ? (
                   <div className="text-muted-foreground">
-                    Created with name <span className="font-medium">{rev.name}</span>
-                    .
+                    Created with name{" "}
+                    <span className="font-medium">{fullName(rev)}</span>.
                   </div>
                 ) : changes.length === 0 ? (
                   <div className="text-muted-foreground italic">
@@ -359,7 +372,9 @@ function ProfileHistory({
                   <ul className="space-y-0.5">
                     {changes.map((c) => (
                       <li key={c.field} className="font-mono text-xs">
-                        <span className="text-muted-foreground">{c.field}: </span>
+                        <span className="text-muted-foreground">
+                          {c.field}:{" "}
+                        </span>
                         <span className="line-through text-muted-foreground/70">
                           {c.from || "∅"}
                         </span>

@@ -18,10 +18,11 @@ import { createPatient, updatePatient } from "@/lib/matrix/patients";
 import type { PatientRecord } from "@/lib/matrix/types";
 import { toast } from "sonner";
 
-type FormValues = Omit<PatientRecord, "updatedAt">;
+type FormValues = Omit<PatientRecord, "updatedAt" | "updatedTimes">;
 
 const EMPTY: FormValues = {
-  name: "",
+  firstName: "",
+  lastName: "",
   dob: "",
   phone: "",
   email: "",
@@ -39,14 +40,25 @@ function PatientFormFields({
     onChange({ ...values, [k]: v });
   return (
     <>
-      <div className="space-y-2">
-        <Label htmlFor="name">Name</Label>
-        <Input
-          id="name"
-          value={values.name}
-          onChange={(e) => set("name", e.target.value)}
-          required
-        />
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label htmlFor="firstName">First name</Label>
+          <Input
+            id="firstName"
+            value={values.firstName}
+            onChange={(e) => set("firstName", e.target.value)}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="lastName">Last name</Label>
+          <Input
+            id="lastName"
+            value={values.lastName}
+            onChange={(e) => set("lastName", e.target.value)}
+            required
+          />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-2">
@@ -90,20 +102,38 @@ function PatientFormFields({
   );
 }
 
+const MATRIX_ID_RE = /^@[^:\s]+:[^:\s]+$/;
+
 export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
   const { client, ready, notReadyReason } = useMatrix();
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [values, setValues] = useState<FormValues>(EMPTY);
+  const [inviteInput, setInviteInput] = useState("");
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!client || !ready) return;
+    const inviteId = inviteInput.trim();
+    if (inviteId && !MATRIX_ID_RE.test(inviteId)) {
+      toast.error(
+        `Not a valid Matrix user ID: ${inviteId}. Expected @user:server.`,
+      );
+      return;
+    }
     setSubmitting(true);
     try {
-      await createPatient(client, values);
-      toast.success(`Patient room created for ${values.name}`);
+      await createPatient(client, values, {
+        inviteUserIds: inviteId ? [inviteId] : [],
+      });
+      const display = `${values.firstName} ${values.lastName}`.trim();
+      toast.success(
+        inviteId
+          ? `Patient room created for ${display}; invited ${inviteId}.`
+          : `Patient room created for ${display}`,
+      );
       setValues(EMPTY);
+      setInviteInput("");
       setOpen(false);
       onCreated?.();
     } catch (err) {
@@ -131,10 +161,30 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
             </DialogDescription>
           </DialogHeader>
           <PatientFormFields values={values} onChange={setValues} />
+          <div className="space-y-2">
+            <Label htmlFor="invite">Invite Matrix user (optional)</Label>
+            <Input
+              id="invite"
+              value={inviteInput}
+              onChange={(e) => setInviteInput(e.target.value)}
+              placeholder="@alice:example.org"
+              autoComplete="off"
+              spellCheck={false}
+            />
+            <p className="text-xs text-muted-foreground">
+              They&apos;ll be invited to the room and can decrypt every
+              message from creation onward.
+            </p>
+          </div>
           <DialogFooter>
             <Button
               type="submit"
-              disabled={submitting || !values.name || !ready}
+              disabled={
+                submitting ||
+                !values.firstName.trim() ||
+                !values.lastName.trim() ||
+                !ready
+              }
               title={notReadyReason ?? undefined}
             >
               {submitting ? "Creating…" : "Create patient"}
@@ -228,7 +278,12 @@ function EditPatientForm({
       <DialogFooter>
         <Button
           type="submit"
-          disabled={submitting || !values.name || !ready}
+          disabled={
+                submitting ||
+                !values.firstName.trim() ||
+                !values.lastName.trim() ||
+                !ready
+              }
           title={notReadyReason ?? undefined}
         >
           {submitting ? "Saving…" : "Save changes"}

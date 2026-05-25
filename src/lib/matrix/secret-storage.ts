@@ -33,19 +33,96 @@ export function hasCachedSecurityKey(): boolean {
   return cached !== null;
 }
 
+/**
+ * True when the backup decryption key is already in the rust crypto store —
+ * i.e. the user proved they hold the recovery key on a previous load and the
+ * SDK persisted the proof. Lets us skip the recovery-key prompt on refresh
+ * without weakening the AGENTS.md access gate, because sign-out wipes this
+ * store along with everything else.
+ */
+export async function hasCachedBackupDecryptionKey(
+  client: MatrixClient,
+): Promise<boolean> {
+  const crypto = client.getCrypto();
+  if (!crypto) return false;
+  try {
+    const key = await crypto.getSessionBackupPrivateKey();
+    return key !== null;
+  } catch {
+    return false;
+  }
+}
+
+export function clearCachedSecurityKey(): void {
+  cached = null;
+}
+
+/**
+ * Whether the user's account already has secret storage set up. Used by the
+ * Recovery key modal to decide between Generate and Enter.
+ */
+export async function hasSecretStorage(
+  client: MatrixClient,
+): Promise<boolean> {
+  const keyId = await client.secretStorage.getDefaultKeyId();
+  return !!keyId;
+}
+
+/**
+ * Generate a fresh recovery key, set up SSSS, store cross-signing private
+ * keys into SSSS, and create a new key backup encrypted under the same key.
+ * Returns the encoded recovery key — the caller MUST display it to the user
+ * because it cannot be recovered after this call returns.
+ */
+export async function generateRecoveryKey(
+  client: MatrixClient,
+): Promise<{ recoveryKey: string }> {
+  LOG("generateRecoveryKey start");
+  const crypto = client.getCrypto();
+  if (!crypto) throw new Error("Crypto is not initialized on this client.");
+
+  const generated = await crypto.createRecoveryKeyFromPassphrase();
+  if (!generated.encodedPrivateKey) {
+    throw new Error("Failed to generate recovery key (no encoded form).");
+  }
+
+  try {
+    await crypto.bootstrapCrossSigning({});
+  } catch (e) {
+    LOG_ERR("bootstrapCrossSigning failed (non-fatal)", e);
+  }
+
+  await crypto.bootstrapSecretStorage({
+    createSecretStorageKey: async () => generated,
+    setupNewKeyBackup: true,
+  });
+
+  // bootstrapSecretStorage set the new key as the SSSS default. Cache it in
+  // memory so subsequent SSSS operations have something to feed into the
+  // getSecretStorageKey callback.
+  const newKeyId = await client.secretStorage.getDefaultKeyId();
+  if (newKeyId) {
+    cached = { keyId: newKeyId, key: generated.privateKey };
+  }
+  LOG("generateRecoveryKey ok, newKeyId=", newKeyId);
+
+  return { recoveryKey: generated.encodedPrivateKey };
+}
+
 export type UnlockOutcome = {
   crossSigningReady: boolean;
   secretStorageReady: boolean;
   keyBackupRestored: { total: number; imported: number } | null;
 };
 
-export async function unlockWithSecurityKey(
+const LOG = (...args: unknown[]) => console.log("[unlock]", ...args);
+const LOG_ERR = (...args: unknown[]) => console.error("[unlock]", ...args);
+
+export async function cacheSecurityKey(
   client: MatrixClient,
   recoveryKey: string,
-): Promise<UnlockOutcome> {
-  const crypto = client.getCrypto();
-  if (!crypto) throw new Error("Crypto is not initialized on this client.");
-
+): Promise<{ keyId: string }> {
+  LOG("cacheSecurityKey start");
   const trimmed = recoveryKey.replace(/\s+/g, "");
   const { decodeRecoveryKey } = await import(
     "matrix-js-sdk/lib/crypto-api/recovery-key"
@@ -55,8 +132,9 @@ export async function unlockWithSecurityKey(
   try {
     keyBytes = decodeRecoveryKey(trimmed);
   } catch (e) {
+    LOG_ERR("decodeRecoveryKey failed", e);
     throw new Error(
-      `Couldn't decode the security key: ${
+      `Couldn't decode the recovery key: ${
         e instanceof Error ? e.message : String(e)
       }`,
     );
@@ -82,39 +160,91 @@ export async function unlockWithSecurityKey(
   const valid = await ss.checkKey(keyBytes, keyInfo);
   if (!valid) {
     throw new Error(
-      "That security key doesn't match your account's secret storage key.",
+      "That recovery key doesn't match your account's secret storage key.",
     );
   }
 
   cached = { keyId: defaultKeyId, key: keyBytes };
+  LOG("cached SSSS key set, keyId=", defaultKeyId);
+  return { keyId: defaultKeyId };
+}
+
+export async function unlockWithSecurityKey(
+  client: MatrixClient,
+  recoveryKey: string,
+): Promise<UnlockOutcome> {
+  LOG("unlock start");
+  const crypto = client.getCrypto();
+  if (!crypto) throw new Error("Crypto is not initialized on this client.");
+
+  await cacheSecurityKey(client, recoveryKey);
 
   try {
     await crypto.bootstrapCrossSigning({});
-  } catch {
-    // Non-fatal: account may not have cross-signing private keys stashed in
-    // SSSS, or the recovery key only protects key backup. Continue with the
-    // backup restore — that's the part that actually unblocks decryption.
+    LOG("bootstrapCrossSigning ok");
+  } catch (e) {
+    LOG_ERR("bootstrapCrossSigning failed (non-fatal)", e);
   }
 
   let keyBackupRestored: UnlockOutcome["keyBackupRestored"] = null;
+  const beforeBackupVersion = await crypto.getActiveSessionBackupVersion();
+  LOG("active backup version (before) =", beforeBackupVersion);
+  await crypto.checkKeyBackupAndEnable();
+  LOG(
+    "active backup version (after checkKeyBackupAndEnable) =",
+    await crypto.getActiveSessionBackupVersion(),
+  );
+  // Pull the backup *decryption* key out of SSSS and persist it into the
+  // rust crypto store. Without this, the device has an "active" backup
+  // version (it can upload) but no way to read it, and the SDK's ondemand
+  // downloader stays disabled — every old event then surfaces as
+  // HISTORICAL_MESSAGE_BACKUP_UNCONFIGURED. Failures here are surfaced because
+  // a silent failure leaves the user thinking they're unlocked while
+  // historical decryption stays broken.
   try {
-    await crypto.checkKeyBackupAndEnable();
+    await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+    LOG("loadSessionBackupPrivateKeyFromSecretStorage ok");
+  } catch (e) {
+    LOG_ERR("loadSessionBackupPrivateKeyFromSecretStorage failed", e);
+    throw new Error(
+      `Couldn't load the backup decryption key from secret storage: ${
+        e instanceof Error ? e.message : String(e)
+      }`,
+    );
+  }
+  try {
     const result = await crypto.restoreKeyBackup();
+    LOG("restoreKeyBackup result", result);
     keyBackupRestored = { total: result.total, imported: result.imported };
     if (result.imported > 0) {
       // Nudge any cached encrypted events to retry decryption with the new keys.
       await Promise.all(
         client.getRooms().map((r) => r.decryptAllEvents().catch(() => {})),
       );
+      LOG("decryptAllEvents triggered for", client.getRooms().length, "rooms");
     }
-  } catch {
-    /* no backup or already restored — non-fatal */
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/no.*backup|empty|not.*configured/i.test(msg)) {
+      LOG("restoreKeyBackup soft-failed (no sessions to import):", msg);
+    } else {
+      LOG_ERR("restoreKeyBackup failed", e);
+      throw new Error(`Couldn't restore key backup: ${msg}`);
+    }
   }
 
   const [crossSigningReady, secretStorageReady] = await Promise.all([
     crypto.isCrossSigningReady(),
     crypto.isSecretStorageReady(),
   ]);
+  LOG(
+    "done",
+    JSON.stringify({
+      crossSigningReady,
+      secretStorageReady,
+      keyBackupRestored,
+    }),
+  );
 
   return { crossSigningReady, secretStorageReady, keyBackupRestored };
 }

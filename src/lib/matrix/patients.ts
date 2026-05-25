@@ -15,9 +15,11 @@ import {
   PATIENT_RECORD_EVENT_TYPE,
   PATIENT_TAG,
   PROFILE_THREAD_STATE_TYPE,
+  fullName,
   type Patient,
   type PatientRecord,
   type PatientRecordRevision,
+  type PendingInvite,
 } from "./types";
 
 type ThreadRelation = {
@@ -118,14 +120,22 @@ function latestRecordFromRoom(room: Room): PatientRecord | null {
     const ev = events[i];
     if (ev.getType() === PATIENT_RECORD_EVENT_TYPE) {
       const content = ev.getContent() as Partial<PatientRecord>;
-      if (content && typeof content.name === "string") {
+      if (
+        content &&
+        typeof content.firstName === "string" &&
+        typeof content.lastName === "string"
+      ) {
         return {
-          name: content.name,
+          firstName: content.firstName,
+          lastName: content.lastName,
           dob: content.dob,
           phone: content.phone,
           email: content.email,
           notes: content.notes,
-          updatedAt: content.updatedAt ?? ev.getTs(),
+          updatedAt:
+            content.updatedAt ?? new Date(ev.getTs()).toISOString(),
+          updatedTimes:
+            typeof content.updatedTimes === "number" ? content.updatedTimes : 0,
         };
       }
     }
@@ -142,22 +152,27 @@ export function listPatients(client: MatrixClient): Patient[] {
       return {
         roomId: room.roomId,
         record: record ?? {
-          name: room.name ?? "(unknown)",
-          updatedAt: 0,
+          firstName: room.name ?? "(unknown)",
+          lastName: "",
+          updatedAt: "",
+          updatedTimes: 0,
         },
       };
     })
-    .sort((a, b) => a.record.name.localeCompare(b.record.name));
+    .sort((a, b) => fullName(a.record).localeCompare(fullName(b.record)));
 }
 
 export async function createPatient(
   client: MatrixClient,
-  input: Omit<PatientRecord, "updatedAt">,
+  input: Omit<PatientRecord, "updatedAt" | "updatedTimes">,
+  options: { inviteUserIds?: string[] } = {},
 ): Promise<string> {
+  const inviteUserIds = (options.inviteUserIds ?? []).filter(Boolean);
   const { room_id: roomId } = await client.createRoom({
-    name: input.name,
+    name: fullName(input),
     visibility: "private" as never,
     preset: "private_chat" as never,
+    invite: inviteUserIds.length ? inviteUserIds : undefined,
     initial_state: [
       {
         type: "m.room.encryption",
@@ -169,21 +184,26 @@ export async function createPatient(
 
   await client.setRoomTag(roomId, PATIENT_TAG, { order: Date.now() });
 
-  // Make sure crypto knows about every device of our user (Element sessions etc.)
-  // before sending the first encrypted event into this brand-new room; otherwise
-  // the Megolm session keys are not shared with those devices and they show
-  // "Unable to decrypt".
+  // Make sure crypto knows about every device that will need to decrypt the
+  // first event in this brand-new room — our own other sessions plus any
+  // freshly-invited users. Without this, the initial Megolm session is not
+  // shared with those devices and they show "Unable to decrypt".
   const crypto = client.getCrypto();
   const userId = client.getUserId();
   if (crypto && userId) {
+    const targets = Array.from(new Set([userId, ...inviteUserIds]));
     try {
-      await crypto.getUserDeviceInfo([userId], true);
+      await crypto.getUserDeviceInfo(targets, true);
     } catch {
       /* non-fatal */
     }
   }
 
-  const record: PatientRecord = { ...input, updatedAt: Date.now() };
+  const record: PatientRecord = {
+    ...input,
+    updatedAt: new Date().toISOString(),
+    updatedTimes: 0,
+  };
   const { event_id: rootEventId } = await sendCustomEvent(
     client,
     roomId,
@@ -203,7 +223,7 @@ export async function createPatient(
 export async function updatePatient(
   client: MatrixClient,
   roomId: string,
-  input: Omit<PatientRecord, "updatedAt">,
+  input: Omit<PatientRecord, "updatedAt" | "updatedTimes">,
 ): Promise<void> {
   let rootEventId = getProfileThreadRoot(client, roomId);
 
@@ -217,7 +237,12 @@ export async function updatePatient(
     });
   }
 
-  const record: PatientRecord = { ...input, updatedAt: Date.now() };
+  const previous = latestRecordFromRoom(client.getRoom(roomId)!);
+  const record: PatientRecord = {
+    ...input,
+    updatedAt: new Date().toISOString(),
+    updatedTimes: (previous?.updatedTimes ?? 0) + 1,
+  };
   const content: RecordContent = {
     ...record,
     "m.relates_to": { rel_type: "m.thread", event_id: rootEventId },
@@ -230,9 +255,10 @@ export async function updatePatient(
   );
 
   const room = client.getRoom(roomId);
-  if (room && room.name !== input.name) {
+  const derivedName = fullName(input);
+  if (room && room.name !== derivedName) {
     try {
-      await client.setRoomName(roomId, input.name);
+      await client.setRoomName(roomId, derivedName);
     } catch {
       /* non-fatal — room name is a nicety, the record event is the source of truth */
     }
@@ -270,17 +296,26 @@ export function listPatientHistory(
     const ev = events[i];
     if (ev.getType() !== PATIENT_RECORD_EVENT_TYPE) continue;
     const content = ev.getContent() as RecordContent;
-    if (typeof content.name !== "string") continue;
+    if (
+      typeof content.firstName !== "string" ||
+      typeof content.lastName !== "string"
+    ) {
+      continue;
+    }
     const eventId = ev.getId();
     const sender = ev.getSender();
     if (!eventId || !sender) continue;
     out.push({
-      name: content.name,
+      firstName: content.firstName,
+      lastName: content.lastName,
       dob: content.dob,
       phone: content.phone,
       email: content.email,
       notes: content.notes,
-      updatedAt: content.updatedAt ?? ev.getTs(),
+      updatedAt:
+        content.updatedAt ?? new Date(ev.getTs()).toISOString(),
+      updatedTimes:
+        typeof content.updatedTimes === "number" ? content.updatedTimes : 0,
       eventId,
       sender,
       ts: ev.getTs(),
@@ -288,6 +323,51 @@ export function listPatientHistory(
     });
   }
   return out;
+}
+
+export type RoomEventExport = {
+  eventId: string | undefined;
+  type: string;
+  stateKey: string | undefined;
+  sender: string | undefined;
+  ts: number;
+  content: unknown;
+  unsigned: unknown;
+  isEncrypted: boolean;
+  decryptionFailureReason: string | null;
+  wireContent: unknown;
+};
+
+function dumpEvent(ev: import("matrix-js-sdk").MatrixEvent): RoomEventExport {
+  const failed = ev.isDecryptionFailure();
+  return {
+    eventId: ev.getId(),
+    type: ev.getType(),
+    stateKey: ev.getStateKey(),
+    sender: ev.getSender() ?? undefined,
+    ts: ev.getTs(),
+    content: failed ? null : ev.getContent(),
+    unsigned: ev.getUnsigned(),
+    isEncrypted: ev.isEncrypted(),
+    decryptionFailureReason: failed
+      ? (ev.decryptionFailureReason ?? "UNKNOWN_ERROR")
+      : null,
+    wireContent: ev.isEncrypted() ? ev.getWireContent() : null,
+  };
+}
+
+export function exportRoomEvents(
+  client: MatrixClient,
+  roomId: string,
+): { timeline: RoomEventExport[]; state: RoomEventExport[] } {
+  const room = client.getRoom(roomId);
+  if (!room) return { timeline: [], state: [] };
+  const timeline = room.getLiveTimeline().getEvents().map(dumpEvent);
+  const state: RoomEventExport[] = [];
+  for (const [, byKey] of room.currentState.events) {
+    for (const [, ev] of byKey) state.push(dumpEvent(ev));
+  }
+  return { timeline, state };
 }
 
 export async function deletePatient(
@@ -326,7 +406,12 @@ export function getPatient(
   const record = latestRecordFromRoom(room);
   return {
     roomId,
-    record: record ?? { name: room.name ?? "(unknown)", updatedAt: 0 },
+    record: record ?? {
+      firstName: room.name ?? "(unknown)",
+      lastName: "",
+      updatedAt: "",
+      updatedTimes: 0,
+    },
   };
 }
 
@@ -351,4 +436,47 @@ export async function sendMessage(
     msgtype: MsgType.Text,
     body,
   });
+  await ensureSessionInBackup(client);
+}
+
+export function listPendingInvites(client: MatrixClient): PendingInvite[] {
+  const userId = client.getUserId();
+  return client
+    .getRooms()
+    .filter((room) => room.getMyMembership() === "invite")
+    .map<PendingInvite>((room) => {
+      // The inviter is whoever set our membership=invite event in the
+      // invite-state preview the server returned.
+      let inviterId: string | null = null;
+      if (userId) {
+        const member = room.getMember(userId);
+        const ev = member?.events?.member;
+        inviterId = ev?.getSender() ?? null;
+      }
+      return {
+        roomId: room.roomId,
+        name: room.name ?? "(unnamed room)",
+        inviterId,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function acceptPatientInvite(
+  client: MatrixClient,
+  roomId: string,
+): Promise<void> {
+  await client.joinRoom(roomId);
+  try {
+    await client.setRoomTag(roomId, PATIENT_TAG, { order: Date.now() });
+  } catch {
+    /* tag failure is non-fatal — the room is joined */
+  }
+}
+
+export async function declinePatientInvite(
+  client: MatrixClient,
+  roomId: string,
+): Promise<void> {
+  await client.leave(roomId);
 }

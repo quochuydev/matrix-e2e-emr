@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/app-shell";
-import { PatientTable } from "@/components/patient-table";
+import { PatientAccount } from "@/components/patient-account";
 
 export default function Home() {
   return (
     <AppShell>
-      <PatientTable />
+      <PatientAccount />
     </AppShell>
   );
 }

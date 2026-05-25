@@ -13,6 +13,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -21,22 +28,52 @@ import {
 import { useMatrix } from "@/lib/matrix/provider";
 import {
   deletePatient,
+  exportRoomEvents,
+  listPatientHistory,
   listPatients,
   subscribeRooms,
 } from "@/lib/matrix/patients";
-import type { Patient } from "@/lib/matrix/types";
+import { fullName, type Patient } from "@/lib/matrix/types";
 import { NewPatientDialog } from "./patient-form";
 import { toast } from "sonner";
 
-function formatDate(ts: number) {
-  if (!ts) return "—";
-  return new Date(ts).toLocaleString();
+function formatDate(iso: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleString();
+}
+
+function slugify(s: string): string {
+  return (
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 40) || "patient"
+  );
+}
+
+function downloadJson(filename: string, data: unknown) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function PatientTable() {
-  const { client, session, signOut, ready, notReadyReason, pendingBackup } =
-    useMatrix();
+  const { client, session, ready, notReadyReason } = useMatrix();
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<{
+    roomId: string;
+    name: string;
+  } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!client) return;
@@ -45,15 +82,17 @@ export function PatientTable() {
     return subscribeRooms(client, refresh);
   }, [client]);
 
-  const onDelete = async (roomId: string, name: string) => {
-    if (!client || !ready) return;
-    if (!confirm(`Delete patient room for ${name}? You can't undo this.`))
-      return;
+  const confirmDelete = async () => {
+    if (!client || !ready || !pendingDelete) return;
+    setDeleting(true);
     try {
-      await deletePatient(client, roomId);
-      toast.success(`Removed ${name}`);
+      await deletePatient(client, pendingDelete.roomId);
+      toast.success(`Removed ${pendingDelete.name}`);
+      setPendingDelete(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -69,26 +108,6 @@ export function PatientTable() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            disabled={pendingBackup > 0}
-            onClick={async () => {
-              try {
-                await signOut();
-              } catch (err) {
-                toast.error(err instanceof Error ? err.message : String(err));
-              }
-            }}
-            title={
-              pendingBackup > 0
-                ? `Backing up ${pendingBackup} message key${pendingBackup === 1 ? "" : "s"}… please wait`
-                : undefined
-            }
-          >
-            {pendingBackup > 0
-              ? `Backing up ${pendingBackup}…`
-              : "Sign out"}
-          </Button>
           <NewPatientDialog />
         </div>
       </div>
@@ -102,6 +121,7 @@ export function PatientTable() {
               <TableHead>Contact</TableHead>
               <TableHead>Notes</TableHead>
               <TableHead>Updated</TableHead>
+              <TableHead className="w-[70px] text-right">Edits</TableHead>
               <TableHead className="w-[140px]">Room</TableHead>
               <TableHead className="w-[40px]" />
             </TableRow>
@@ -110,7 +130,7 @@ export function PatientTable() {
             {patients.length === 0 && (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="text-center text-muted-foreground py-12"
                 >
                   No patients yet. Click <b>New patient</b> to create one.
@@ -124,7 +144,7 @@ export function PatientTable() {
                     href={`/patients/${encodeURIComponent(p.roomId)}`}
                     className="hover:underline"
                   >
-                    {p.record.name}
+                    {fullName(p.record)}
                   </Link>
                 </TableCell>
                 <TableCell>{p.record.dob || "—"}</TableCell>
@@ -144,6 +164,9 @@ export function PatientTable() {
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
                   {formatDate(p.record.updatedAt)}
+                </TableCell>
+                <TableCell className="text-right font-mono text-sm text-muted-foreground">
+                  {p.record.updatedTimes}
                 </TableCell>
                 <TableCell>
                   <Badge variant="secondary" className="font-mono text-xs">
@@ -170,7 +193,31 @@ export function PatientTable() {
                         }
                       />
                       <DropdownMenuItem
-                        onClick={() => onDelete(p.roomId, p.record.name)}
+                        onClick={() => {
+                          if (!client) return;
+                          const history = listPatientHistory(client, p.roomId);
+                          const events = exportRoomEvents(client, p.roomId);
+                          downloadJson(
+                            `patient-${slugify(fullName(p.record))}-${p.roomId.slice(1, 11)}.json`,
+                            {
+                              exportedAt: new Date().toISOString(),
+                              roomId: p.roomId,
+                              record: p.record,
+                              history,
+                              events,
+                            },
+                          );
+                        }}
+                      >
+                        Export JSON
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() =>
+                          setPendingDelete({
+                            roomId: p.roomId,
+                            name: fullName(p.record),
+                          })
+                        }
                         variant="destructive"
                         disabled={!ready}
                         title={notReadyReason ?? undefined}
@@ -185,6 +232,38 @@ export function PatientTable() {
           </TableBody>
         </Table>
       </div>
+
+      <Dialog
+        open={!!pendingDelete}
+        onOpenChange={(o) => !o && setPendingDelete(null)}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle>Delete patient?</DialogTitle>
+            <DialogDescription>
+              This permanently removes the patient room for{" "}
+              <span className="font-medium">{pendingDelete?.name}</span>. You
+              can&apos;t undo this.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPendingDelete(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
