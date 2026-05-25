@@ -13,9 +13,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useMatrix } from "@/lib/matrix/provider";
-import { createPatient, updatePatient } from "@/lib/matrix/patients";
-import type { PatientRecord } from "@/lib/matrix/types";
+import { useMatrix } from "matrix-client/react";
+import {
+  createPatient,
+  updatePatient,
+  type PatientRecord,
+} from "matrix-client/patients";
+import { notReadyMessage } from "@/lib/not-ready-message";
 import { toast } from "sonner";
 
 type FormValues = Omit<PatientRecord, "updatedAt" | "updatedTimes">;
@@ -147,7 +151,7 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
         render={
-          <Button disabled={!ready} title={notReadyReason ?? undefined}>
+          <Button disabled={!ready} title={notReadyMessage(notReadyReason) || undefined}>
             New patient
           </Button>
         }
@@ -185,7 +189,7 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
                 !values.lastName.trim() ||
                 !ready
               }
-              title={notReadyReason ?? undefined}
+              title={notReadyMessage(notReadyReason) || undefined}
             >
               {submitting ? "Creating…" : "Create patient"}
             </Button>
@@ -215,7 +219,7 @@ export function EditPatientDialog({
           <Button
             variant="outline"
             disabled={!ready}
-            title={notReadyReason ?? undefined}
+            title={notReadyMessage(notReadyReason) || undefined}
           >
             Edit profile
           </Button>
@@ -284,7 +288,7 @@ function EditPatientForm({
                 !values.lastName.trim() ||
                 !ready
               }
-          title={notReadyReason ?? undefined}
+          title={notReadyMessage(notReadyReason) || undefined}
         >
           {submitting ? "Saving…" : "Save changes"}
         </Button>

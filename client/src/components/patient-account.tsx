@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { MatrixClient, Room } from "matrix-js-sdk";
-import { useMatrix } from "@/lib/matrix/provider";
-import { subscribeRooms } from "@/lib/matrix/patients";
+import { useMatrix, usePatientInvites } from "matrix-client/react";
+import { subscribeRooms } from "matrix-client/patients";
 import { CLINICS, findClinicByUserId, isClinicUser } from "@/lib/config";
+import { notReadyMessage } from "@/lib/not-ready-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -49,8 +50,8 @@ function listClinicRelations(client: MatrixClient): ClinicRelation[] {
 }
 
 export function PatientAccount() {
-  const { client, session, acceptInvite, declineInvite, ready, notReadyReason } =
-    useMatrix();
+  const { client, session, ready, notReadyReason } = useMatrix();
+  const { accept: acceptInvite, decline: declineInvite } = usePatientInvites();
   const [relations, setRelations] = useState<ClinicRelation[]>([]);
   const [busyRoom, setBusyRoom] = useState<string | null>(null);
 
@@ -183,7 +184,7 @@ export function PatientAccount() {
                         <Button
                           size="sm"
                           disabled={busy || !!busyRoom || !ready}
-                          title={!ready ? notReadyReason ?? undefined : undefined}
+                          title={!ready ? notReadyMessage(notReadyReason) : undefined}
                           onClick={() => handleAccept(rel.roomId, rel.clinicName)}
                         >
                           {busy ? "…" : "Accept"}

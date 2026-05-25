@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMatrix } from "@/lib/matrix/provider";
+import { useMatrix, usePatientInvites } from "matrix-client/react";
 import {
   generateRecoveryKey,
   hasSecretStorage,
   unlockWithSecurityKey,
-} from "@/lib/matrix/secret-storage";
+} from "matrix-client";
+import { notReadyMessage } from "@/lib/not-ready-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -62,13 +63,15 @@ export function StatusBar() {
     ready,
     notReadyReason,
     pendingBackup,
-    pendingInvites,
-    acceptInvite,
-    declineInvite,
     signOut,
     resetBackup,
     markKeyUnlocked,
   } = useMatrix();
+  const {
+    invites: pendingInvites,
+    accept: acceptInvite,
+    decline: declineInvite,
+  } = usePatientInvites();
   const [now, setNow] = useState(() => Date.now());
 
   const [invitesOpen, setInvitesOpen] = useState(false);
@@ -263,7 +266,9 @@ export function StatusBar() {
             </span>
           )}
           {!ready && notReadyReason && (
-            <span className="text-destructive">{notReadyReason}</span>
+            <span className="text-destructive">
+              {notReadyMessage(notReadyReason)}
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">

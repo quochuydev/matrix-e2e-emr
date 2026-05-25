@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { MatrixProvider } from "@/lib/matrix/provider";
+import { MatrixProvider } from "matrix-client/react";
 import { Toaster } from "@/components/ui/sonner";
 
 export const metadata: Metadata = {

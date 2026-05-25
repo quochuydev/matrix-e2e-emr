@@ -25,15 +25,17 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useMatrix } from "@/lib/matrix/provider";
+import { useMatrix } from "matrix-client/react";
 import {
   deletePatient,
   exportRoomEvents,
+  fullName,
   listPatientHistory,
   listPatients,
   subscribeRooms,
-} from "@/lib/matrix/patients";
-import { fullName, type Patient } from "@/lib/matrix/types";
+  type Patient,
+} from "matrix-client/patients";
+import { notReadyMessage } from "@/lib/not-ready-message";
 import { NewPatientDialog } from "./patient-form";
 import { toast } from "sonner";
 
@@ -220,7 +222,7 @@ export function PatientTable() {
                         }
                         variant="destructive"
                         disabled={!ready}
-                        title={notReadyReason ?? undefined}
+                        title={notReadyMessage(notReadyReason) || undefined}
                       >
                         Delete
                       </DropdownMenuItem>

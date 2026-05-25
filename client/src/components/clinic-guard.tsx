@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMatrix } from "@/lib/matrix/provider";
+import { useMatrix } from "matrix-client/react";
 import { isClinicUser } from "@/lib/config";
 import { Button } from "@/components/ui/button";
 

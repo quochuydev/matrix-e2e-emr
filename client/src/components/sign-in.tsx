@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { useMatrix } from "@/lib/matrix/provider";
+import { useMatrix } from "matrix-client/react";
+import {
+  DEFAULT_HOMESERVER_URL,
+  DEFAULT_IDENTITY_SERVER_URL,
+} from "matrix-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import {
-  DEFAULT_HOMESERVER_URL,
-  DEFAULT_IDENTITY_SERVER_URL,
-} from "@/lib/matrix/types";
 import { toast } from "sonner";
 
 export function SignIn() {

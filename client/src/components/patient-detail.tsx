@@ -3,15 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { MatrixEvent } from "matrix-js-sdk";
-import { useMatrix } from "@/lib/matrix/provider";
+import { useMatrix } from "matrix-client/react";
 import {
+  fullName,
   getPatient,
   listMessages,
   listPatientHistory,
   sendMessage,
   subscribeRooms,
-} from "@/lib/matrix/patients";
-import { fullName, type Patient, type PatientRecordRevision } from "@/lib/matrix/types";
+  type Patient,
+  type PatientRecordRevision,
+} from "matrix-client/patients";
+import { notReadyMessage } from "@/lib/not-ready-message";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -185,15 +188,15 @@ export function PatientDetail({ roomId }: { roomId: string }) {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={
-              ready ? "Type a message…" : (notReadyReason ?? "Not ready")
+              ready ? "Type a message…" : (notReadyMessage(notReadyReason) || "Not ready")
             }
             disabled={sending || !ready}
-            title={notReadyReason ?? undefined}
+            title={notReadyMessage(notReadyReason) || undefined}
           />
           <Button
             type="submit"
             disabled={sending || !text.trim() || !ready}
-            title={notReadyReason ?? undefined}
+            title={notReadyMessage(notReadyReason) || undefined}
           >
             Send
           </Button>

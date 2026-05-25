@@ -11,16 +11,43 @@ import {
   type Room,
 } from "matrix-js-sdk";
 import { CryptoEvent } from "matrix-js-sdk/lib/crypto-api";
-import {
-  PATIENT_RECORD_EVENT_TYPE,
-  PATIENT_TAG,
-  PROFILE_THREAD_STATE_TYPE,
-  fullName,
-  type Patient,
-  type PatientRecord,
-  type PatientRecordRevision,
-  type PendingInvite,
-} from "./types";
+export const PATIENT_TAG = "com.matrix-app.patient";
+export const PATIENT_RECORD_EVENT_TYPE = "com.matrix-app.patient.record";
+export const PROFILE_THREAD_STATE_TYPE =
+  "com.matrix-app.patient.profile-thread";
+
+export type PatientRecord = {
+  firstName: string;
+  lastName: string;
+  dob?: string;
+  phone?: string;
+  email?: string;
+  notes?: string;
+  updatedAt: string;
+  updatedTimes: number;
+};
+
+export function fullName(r: { firstName: string; lastName: string }): string {
+  return `${r.firstName} ${r.lastName}`.trim();
+}
+
+export type PatientRecordRevision = PatientRecord & {
+  eventId: string;
+  sender: string;
+  ts: number;
+  isRoot: boolean;
+};
+
+export type Patient = {
+  roomId: string;
+  record: PatientRecord;
+};
+
+export type PendingInvite = {
+  roomId: string;
+  name: string;
+  inviterId: string | null;
+};
 
 type ThreadRelation = {
   rel_type: "m.thread";

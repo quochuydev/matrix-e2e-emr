@@ -1,12 +1,23 @@
 "use client";
 
-import { useMatrix } from "@/lib/matrix/provider";
+import { useEffect } from "react";
+import { useMatrix } from "matrix-client/react";
 import { SignIn } from "./sign-in";
 import { StatusBar } from "./status-bar";
 import { FullPageLoader } from "./full-page-loader";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { status, session, error } = useMatrix();
+  const { status, session, error, pendingBackup } = useMatrix();
+
+  useEffect(() => {
+    if (pendingBackup <= 0) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [pendingBackup]);
 
   if (status === "initializing") {
     return <FullPageLoader />;

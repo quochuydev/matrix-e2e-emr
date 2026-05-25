@@ -14,23 +14,17 @@ import {
   createMatrixClient,
   loginWithPassword,
   type LoginInput,
-} from "./client";
+} from "../client";
 import {
   cacheSecurityKey,
   getStatus,
   hasCachedBackupDecryptionKey,
-} from "./secret-storage";
+} from "../secret-storage";
 import {
-  SESSION_STORAGE_KEY,
-  type PendingInvite,
+  DEFAULT_SESSION_STORAGE_KEY,
   type StoredSession,
-} from "./types";
-import {
-  acceptPatientInvite,
-  declinePatientInvite,
-  listPendingInvites,
-} from "./patients";
-import { wipeLocalMatrixData } from "./wipe";
+} from "../types";
+import { wipeLocalMatrixData } from "../wipe";
 
 type Status = "initializing" | "idle" | "connecting" | "ready" | "error";
 
@@ -40,7 +34,15 @@ export type CryptoStatus = {
   backupVersion: string | null;
 };
 
-type Ctx = {
+export type NotReadyReason =
+  | { kind: "not_signed_in" }
+  | { kind: "syncing"; syncState: string | null }
+  | { kind: "reconnecting" }
+  | { kind: "catchup" }
+  | { kind: "sync_error" }
+  | { kind: "needs_recovery_key" };
+
+export type MatrixContextValue = {
   client: MatrixClient | null;
   session: StoredSession | null;
   status: Status;
@@ -53,29 +55,35 @@ type Ctx = {
   keyUnlockedThisSession: boolean;
   /** Called when an unlock-style operation (unlock or resetBackup) succeeds. */
   markKeyUnlocked: () => void;
-  pendingInvites: PendingInvite[];
-  acceptInvite: (roomId: string) => Promise<void>;
-  declineInvite: (roomId: string) => Promise<void>;
   ready: boolean;
-  notReadyReason: string | null;
+  notReadyReason: NotReadyReason | null;
   signIn: (input: LoginInput) => Promise<void>;
   signOut: () => Promise<void>;
   resetBackup: (securityKey: string) => Promise<void>;
 };
 
-const MatrixContext = createContext<Ctx | null>(null);
+const MatrixContext = createContext<MatrixContextValue | null>(null);
 
-function loadSession(): StoredSession | null {
+export type MatrixProviderProps = {
+  children: React.ReactNode;
+  /** localStorage key used to persist the session. Defaults to "matrix-client.session". */
+  sessionStorageKey?: string;
+};
+
+function loadSession(storageKey: string): StoredSession | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const raw = window.localStorage.getItem(storageKey);
     return raw ? (JSON.parse(raw) as StoredSession) : null;
   } catch {
     return null;
   }
 }
 
-export function MatrixProvider({ children }: { children: React.ReactNode }) {
+export function MatrixProvider({
+  children,
+  sessionStorageKey = DEFAULT_SESSION_STORAGE_KEY,
+}: MatrixProviderProps) {
   const [client, setClient] = useState<MatrixClient | null>(null);
   const [session, setSession] = useState<StoredSession | null>(null);
   const [status, setStatus] = useState<Status>("initializing");
@@ -85,7 +93,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
   const [cryptoStatus, setCryptoStatus] = useState<CryptoStatus | null>(null);
   const [pendingBackup, setPendingBackup] = useState(0);
   const [keyUnlockedThisSession, setKeyUnlockedThisSession] = useState(false);
-  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const startedRef = useRef(false);
 
   const refreshCryptoStatus = useCallback(async (c: MatrixClient) => {
@@ -101,18 +108,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refreshInvites = useCallback((c: MatrixClient) => {
-    try {
-      setPendingInvites(listPendingInvites(c));
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   const attachListeners = useCallback(
     async (c: MatrixClient) => {
       const sdk = await import("matrix-js-sdk");
-      const { ClientEvent, HttpApiEvent, RoomEvent } = sdk;
+      const { ClientEvent, HttpApiEvent } = sdk;
       const { CryptoEvent } = await import("matrix-js-sdk/lib/crypto-api");
 
       const onSync = (state: string) => {
@@ -127,14 +126,8 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       const onRemaining = (remaining: number) => {
         setPendingBackup(remaining);
       };
-      const onMembership = () => {
-        refreshInvites(c);
-      };
       const onLoggedOut = () => {
-        // Server rejected our access token (revoked elsewhere or expired).
-        // Drop local session so the UI returns to the sign-in screen instead
-        // of hanging on dead requests.
-        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+        window.localStorage.removeItem(sessionStorageKey);
         setClient(null);
         setSession(null);
         setSyncState(null);
@@ -142,7 +135,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         setCryptoStatus(null);
         setPendingBackup(0);
         setKeyUnlockedThisSession(false);
-        setPendingInvites([]);
         setStatus("idle");
       };
 
@@ -152,7 +144,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       c.on(CryptoEvent.KeyBackupDecryptionKeyCached, onCrypto);
       c.on(CryptoEvent.DevicesUpdated, onCrypto);
       c.on(CryptoEvent.KeyBackupSessionsRemaining, onRemaining);
-      c.on(RoomEvent.MyMembership, onMembership);
       c.on(HttpApiEvent.SessionLoggedOut, onLoggedOut);
 
       return () => {
@@ -162,11 +153,10 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         c.off(CryptoEvent.KeyBackupDecryptionKeyCached, onCrypto);
         c.off(CryptoEvent.DevicesUpdated, onCrypto);
         c.off(CryptoEvent.KeyBackupSessionsRemaining, onRemaining);
-        c.off(RoomEvent.MyMembership, onMembership);
         c.off(HttpApiEvent.SessionLoggedOut, onLoggedOut);
       };
     },
-    [refreshCryptoStatus, refreshInvites],
+    [refreshCryptoStatus, sessionStorageKey],
   );
 
   const detachRef = useRef<(() => void) | null>(null);
@@ -177,9 +167,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       setStatus("connecting");
       setError(null);
       try {
-        // If a previous sign-out is still cleaning up IndexedDB in the
-        // background, wait for it before starting a fresh client. Otherwise
-        // the new client deadlocks on a locked store.
         if (cleanupRef.current) {
           await cleanupRef.current;
           cleanupRef.current = null;
@@ -194,7 +181,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         if (await hasCachedBackupDecryptionKey(c)) {
           setKeyUnlockedThisSession(true);
         }
-        refreshInvites(c);
         setStatus("ready");
         return c;
       } catch (e) {
@@ -203,84 +189,73 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
     },
-    [attachListeners, refreshCryptoStatus, refreshInvites],
+    [attachListeners, refreshCryptoStatus],
   );
 
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    const existing = loadSession();
+    const existing = loadSession(sessionStorageKey);
     if (existing) {
-      // Bootstrap a stored session on mount; start() itself drives status transitions.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       void start(existing);
     } else {
       setStatus("idle");
     }
-  }, [start]);
+  }, [sessionStorageKey, start]);
 
-  useEffect(() => {
-    if (pendingBackup <= 0) return;
-    const onBeforeUnload = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-      e.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [pendingBackup]);
+  const teardownClient = useCallback(
+    async (c: MatrixClient | null) => {
+      if (detachRef.current) {
+        detachRef.current();
+        detachRef.current = null;
+      }
+      window.localStorage.removeItem(sessionStorageKey);
+      setClient(null);
+      setSession(null);
+      setSyncState(null);
+      setLastSyncedAt(null);
+      setCryptoStatus(null);
+      setPendingBackup(0);
+      setKeyUnlockedThisSession(false);
+      setStatus("idle");
 
-  const teardownClient = useCallback(async (c: MatrixClient | null) => {
-    if (detachRef.current) {
-      detachRef.current();
-      detachRef.current = null;
-    }
-    // Flip UI back to sign-in screen immediately. SDK cleanup happens in the
-    // background — clearStores() can stall on the rust-crypto IndexedDB.
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
-    setClient(null);
-    setSession(null);
-    setSyncState(null);
-    setLastSyncedAt(null);
-    setCryptoStatus(null);
-    setPendingBackup(0);
-    setKeyUnlockedThisSession(false);
-    setPendingInvites([]);
-    setStatus("idle");
-
-    if (!c) {
-      await wipeLocalMatrixData();
-      return;
-    }
-    const withTimeout = <T,>(p: Promise<T>, ms: number) =>
-      Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);
-    cleanupRef.current = (async () => {
-      try {
-        await withTimeout(c.logout(true), 3000);
-      } catch {
-        /* ignore — token may already be invalid */
-      }
-      try {
-        c.stopClient();
-      } catch {
-        /* ignore */
-      }
-      try {
-        await withTimeout(c.clearStores(), 5000);
-      } catch {
-        /* ignore */
-      }
-      try {
+      if (!c) {
         await wipeLocalMatrixData();
-      } catch {
-        /* ignore */
+        return;
       }
-    })();
-  }, []);
+      const withTimeout = <T,>(p: Promise<T>, ms: number) =>
+        Promise.race([p, new Promise<void>((r) => setTimeout(r, ms))]);
+      cleanupRef.current = (async () => {
+        try {
+          await withTimeout(c.logout(true), 3000);
+        } catch {
+          /* ignore — token may already be invalid */
+        }
+        try {
+          c.stopClient();
+        } catch {
+          /* ignore */
+        }
+        try {
+          await withTimeout(c.clearStores(), 5000);
+        } catch {
+          /* ignore */
+        }
+        try {
+          await wipeLocalMatrixData();
+        } catch {
+          /* ignore */
+        }
+      })();
+    },
+    [sessionStorageKey],
+  );
 
   const signIn = useCallback(
     async (input: LoginInput) => {
       const s = await loginWithPassword(input);
-      window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(s));
+      window.localStorage.setItem(sessionStorageKey, JSON.stringify(s));
       const c = await start(s);
       if (!c) {
         throw new Error(
@@ -288,7 +263,7 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
         );
       }
     },
-    [start],
+    [sessionStorageKey, start],
   );
 
   const signOut = useCallback(async () => {
@@ -305,29 +280,17 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       if (!client) throw new Error("Not signed in.");
       const crypto = client.getCrypto();
       if (!crypto) throw new Error("Crypto is not initialized.");
-      // Validate the security key and prime the in-memory SSSS cache so the
-      // SDK's getSecretStorageKey callback has something to return when
-      // resetKeyBackup tries to store the new key into SSSS.
       await cacheSecurityKey(client, securityKey);
-      // Creates a new server-side backup version with a fresh decryption key
-      // and stores that key in SSSS. Replaces any existing backup; sessions
-      // from sender devices need to be re-uploaded to the new version before
-      // they're recoverable here.
       await crypto.resetKeyBackup();
-      // Cache the freshly-stored private key locally so the SDK can read the
-      // new backup on demand.
       try {
         await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
       } catch {
         /* fresh backup means there's nothing to load yet — non-fatal */
       }
       await refreshCryptoStatus(client);
-      // Force a retry of any UTD events with the now-matching backup key.
       await Promise.all(
         client.getRooms().map((r) => r.decryptAllEvents().catch(() => {})),
       );
-      // The user just proved they hold the recovery key by writing a new
-      // backup with it — count that as unlocking this session.
       setKeyUnlockedThisSession(true);
     },
     [client, refreshCryptoStatus],
@@ -337,52 +300,28 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
     setKeyUnlockedThisSession(true);
   }, []);
 
-  const acceptInvite = useCallback(
-    async (roomId: string) => {
-      if (!client) throw new Error("Not signed in.");
-      await acceptPatientInvite(client, roomId);
-      refreshInvites(client);
-    },
-    [client, refreshInvites],
-  );
-
-  const declineInvite = useCallback(
-    async (roomId: string) => {
-      if (!client) throw new Error("Not signed in.");
-      await declinePatientInvite(client, roomId);
-      refreshInvites(client);
-    },
-    [client, refreshInvites],
-  );
-
-  const { ready, notReadyReason } = useMemo(() => {
+  const { ready, notReadyReason } = useMemo<{
+    ready: boolean;
+    notReadyReason: NotReadyReason | null;
+  }>(() => {
     if (status !== "ready" || !client) {
-      return { ready: false, notReadyReason: "Not signed in." };
+      return { ready: false, notReadyReason: { kind: "not_signed_in" } };
     }
     if (syncState !== "PREPARED" && syncState !== "SYNCING") {
-      const label =
-        syncState === "RECONNECTING"
-          ? "Reconnecting to homeserver…"
-          : syncState === "CATCHUP"
-            ? "Catching up with homeserver…"
-            : syncState === "ERROR"
-              ? "Sync error — waiting for reconnection."
-              : "Waiting for first sync to finish…";
-      return { ready: false, notReadyReason: label };
+      let reason: NotReadyReason;
+      if (syncState === "RECONNECTING") reason = { kind: "reconnecting" };
+      else if (syncState === "CATCHUP") reason = { kind: "catchup" };
+      else if (syncState === "ERROR") reason = { kind: "sync_error" };
+      else reason = { kind: "syncing", syncState };
+      return { ready: false, notReadyReason: reason };
     }
-    // Per the AGENTS.md rule, no functions are usable until the user has
-    // proven they hold the recovery key in this session.
     if (!keyUnlockedThisSession) {
-      return {
-        ready: false,
-        notReadyReason:
-          "Enter your recovery key in the status bar to unlock this session.",
-      };
+      return { ready: false, notReadyReason: { kind: "needs_recovery_key" } };
     }
     return { ready: true, notReadyReason: null };
   }, [status, client, syncState, keyUnlockedThisSession]);
 
-  const value = useMemo<Ctx>(
+  const value = useMemo<MatrixContextValue>(
     () => ({
       client,
       session,
@@ -394,9 +333,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       pendingBackup,
       keyUnlockedThisSession,
       markKeyUnlocked,
-      pendingInvites,
-      acceptInvite,
-      declineInvite,
       ready,
       notReadyReason,
       signIn,
@@ -414,9 +350,6 @@ export function MatrixProvider({ children }: { children: React.ReactNode }) {
       pendingBackup,
       keyUnlockedThisSession,
       markKeyUnlocked,
-      pendingInvites,
-      acceptInvite,
-      declineInvite,
       ready,
       notReadyReason,
       signIn,
