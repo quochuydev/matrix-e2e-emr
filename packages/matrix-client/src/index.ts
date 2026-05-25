@@ -15,6 +15,10 @@ export {
   unlockWithSecurityKey,
   type UnlockOutcome,
 } from "./secret-storage";
+export {
+  getDeviceVerification,
+  type DeviceVerification,
+} from "./verification";
 export { wipeLocalMatrixData } from "./wipe";
 export {
   DEFAULT_HOMESERVER_URL,

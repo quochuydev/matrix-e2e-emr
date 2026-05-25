@@ -1,7 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMatrix, usePatientInvites } from "matrix-client/react";
+import {
+  useDeviceVerification,
+  useMatrix,
+  usePatientInvites,
+} from "matrix-client/react";
 import {
   generateRecoveryKey,
   hasSecretStorage,
@@ -19,7 +23,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ChevronDownIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
+
+async function copy(value: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(`${label} copied.`);
+  } catch (err) {
+    toast.error(err instanceof Error ? err.message : String(err));
+  }
+}
 
 function formatAgo(ts: number, now: number): string {
   const secs = Math.max(0, Math.floor((now - ts) / 1000));
@@ -106,6 +125,11 @@ export function StatusBar() {
 
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+
+  const [accountOpen, setAccountOpen] = useState(false);
+
+  const verification = useDeviceVerification();
+  const deviceVerified = verification?.deviceVerified ?? null;
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 5000);
@@ -217,6 +241,28 @@ export function StatusBar() {
           <Badge variant={encOk ? "default" : "secondary"}>
             {encOk ? "E2E ready" : "E2E locked"}
           </Badge>
+          <Badge
+            variant={
+              deviceVerified === null
+                ? "secondary"
+                : deviceVerified
+                  ? "default"
+                  : "destructive"
+            }
+            title={
+              deviceVerified === null
+                ? "Checking device verification…"
+                : deviceVerified
+                  ? "This device is signed by your account's cross-signing key."
+                  : "This device is not cross-signed. Unlock with your recovery key to verify it."
+            }
+          >
+            {deviceVerified === null
+              ? "Device …"
+              : deviceVerified
+                ? "Device verified"
+                : "Device unverified"}
+          </Badge>
           <Badge variant={backupOn ? "default" : "secondary"}>
             {backupOn ? `Backup v${cryptoStatus?.backupVersion}` : "No backup"}
           </Badge>
@@ -243,28 +289,6 @@ export function StatusBar() {
               synced {formatAgo(lastSyncedAt, now)}
             </span>
           )}
-          {session?.userId && (
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(session.userId);
-                  toast.success("User ID copied.");
-                } catch (err) {
-                  toast.error(err instanceof Error ? err.message : String(err));
-                }
-              }}
-              title="Copy user ID"
-              className="text-muted-foreground font-mono hover:text-foreground cursor-pointer"
-            >
-              {session.userId}
-            </button>
-          )}
-          {session?.deviceId && (
-            <span className="text-muted-foreground font-mono">
-              {session.deviceId}
-            </span>
-          )}
           {!ready && notReadyReason && (
             <span className="text-destructive">
               {notReadyMessage(notReadyReason)}
@@ -272,37 +296,105 @@ export function StatusBar() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setKeyOpen(true)}
-            title="Unlock encrypted history by entering your recovery key."
-          >
-            Recovery key
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setResetOpen(true)}
-            title="Create a fresh key backup. Only do this if your current backup is broken."
-          >
-            Reset backup
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={pendingBackup > 0}
-            onClick={() => setSignOutOpen(true)}
-            title={
-              pendingBackup > 0
-                ? `Backing up ${pendingBackup} key${pendingBackup === 1 ? "" : "s"}… please wait`
-                : undefined
-            }
-          >
-            {pendingBackup > 0
-              ? `Backing up ${pendingBackup}…`
-              : "Sign out"}
-          </Button>
+          <Popover open={accountOpen} onOpenChange={setAccountOpen}>
+            <PopoverTrigger
+              render={
+                <Button variant="outline" size="sm">
+                  <span className="font-mono truncate max-w-[160px]">
+                    {session?.userId ?? "Account"}
+                  </span>
+                  {pendingBackup > 0 && (
+                    <Badge variant="secondary" className="ml-1">
+                      Backing up {pendingBackup}…
+                    </Badge>
+                  )}
+                  <ChevronDownIcon className="ml-1 size-3.5" />
+                </Button>
+              }
+            />
+            <PopoverContent className="w-80 space-y-3">
+              <div className="space-y-2">
+                {session?.userId && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      User ID
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => copy(session.userId, "User ID")}
+                      title="Copy user ID"
+                      className="group flex w-full items-center justify-between gap-2 rounded-md border bg-muted/40 px-2 py-1.5 text-left font-mono text-xs hover:bg-muted cursor-pointer"
+                    >
+                      <span className="truncate">{session.userId}</span>
+                      <CopyIcon className="size-3.5 shrink-0 opacity-60 group-hover:opacity-100" />
+                    </button>
+                  </div>
+                )}
+                {session?.deviceId && (
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">
+                      Device ID
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => copy(session.deviceId, "Device ID")}
+                      title="Copy device ID"
+                      className="group flex w-full items-center justify-between gap-2 rounded-md border bg-muted/40 px-2 py-1.5 text-left font-mono text-xs hover:bg-muted cursor-pointer"
+                    >
+                      <span className="truncate">{session.deviceId}</span>
+                      <CopyIcon className="size-3.5 shrink-0 opacity-60 group-hover:opacity-100" />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="border-t -mx-3" />
+              <div className="flex flex-col gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start"
+                  onClick={() => {
+                    setAccountOpen(false);
+                    setKeyOpen(true);
+                  }}
+                  title="Unlock encrypted history by entering your recovery key."
+                >
+                  Recovery key
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start"
+                  onClick={() => {
+                    setAccountOpen(false);
+                    setResetOpen(true);
+                  }}
+                  title="Create a fresh key backup. Only do this if your current backup is broken."
+                >
+                  Reset backup
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="justify-start text-destructive hover:text-destructive"
+                  disabled={pendingBackup > 0}
+                  onClick={() => {
+                    setAccountOpen(false);
+                    setSignOutOpen(true);
+                  }}
+                  title={
+                    pendingBackup > 0
+                      ? `Backing up ${pendingBackup} key${pendingBackup === 1 ? "" : "s"}… please wait`
+                      : undefined
+                  }
+                >
+                  {pendingBackup > 0
+                    ? `Backing up ${pendingBackup}…`
+                    : "Sign out"}
+                </Button>
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 

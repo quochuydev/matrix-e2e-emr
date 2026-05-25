@@ -7,3 +7,4 @@ export {
   type NotReadyReason,
 } from "./provider";
 export { usePatientInvites } from "./invites";
+export { useDeviceVerification } from "./verification";
