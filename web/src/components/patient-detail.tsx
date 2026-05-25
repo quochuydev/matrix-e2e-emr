@@ -88,119 +88,121 @@ export function PatientDetail({ roomId }: { roomId: string }) {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[6fr_4fr] lg:items-start">
-        <div className="rounded-lg border bg-card p-6 space-y-4">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-semibold">{fullName(r)}</h1>
-              <div className="text-xs text-muted-foreground font-mono mt-1">
-                {roomId}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <EditPatientDialog roomId={roomId} initial={editInitial} />
-              <Badge>E2E encrypted</Badge>
-            </div>
-          </div>
-          <dl className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <dt className="text-muted-foreground">Date of birth</dt>
-              <dd>{r.dob || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Phone</dt>
-              <dd>{r.phone || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Email</dt>
-              <dd>{r.email || "—"}</dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Updated</dt>
-              <dd>
-                {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-muted-foreground">Times updated</dt>
-              <dd className="font-mono">{r.updatedTimes}</dd>
-            </div>
-            <div className="col-span-2">
-              <dt className="text-muted-foreground">Notes</dt>
-              <dd className="whitespace-pre-wrap">{r.notes || "—"}</dd>
-            </div>
-          </dl>
-        </div>
-
-        <ProfileHistory
-          history={history}
-          currentSelf={session?.userId ?? null}
-        />
-      </div>
-
-      <div className="rounded-lg border bg-card">
-        <div className="border-b px-4 py-3">
-          <h2 className="font-semibold">Encrypted timeline</h2>
-          <p className="text-xs text-muted-foreground">
-            Messages are visible only to members of this room.
-          </p>
-        </div>
-        <div className="max-h-96 overflow-y-auto p-4 space-y-2 text-sm">
-          {messages.length === 0 && (
-            <div className="text-muted-foreground text-center py-8">
-              No messages yet.
-            </div>
-          )}
-          {messages.map((ev) => {
-            const sender = ev.getSender();
-            const isMe = sender === session?.userId;
-            if (ev.isDecryptionFailure()) {
-              return (
-                <UndecryptableMessage
-                  key={ev.getId()}
-                  event={ev}
-                  isMe={isMe}
-                />
-              );
-            }
-            const content = ev.getContent() as { body?: string };
-            const body = content.body ?? "";
-            return (
-              <div
-                key={ev.getId()}
-                className={`flex ${isMe ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[75%] rounded-lg px-3 py-2 ${
-                    isMe ? "bg-primary text-primary-foreground" : "bg-muted"
-                  }`}
-                >
-                  {!isMe && (
-                    <div className="text-xs opacity-70 mb-1">{sender}</div>
-                  )}
-                  <div className="whitespace-pre-wrap break-words">{body}</div>
+        <div className="space-y-6">
+          <div className="rounded-lg border bg-card p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h1 className="text-2xl font-semibold">{fullName(r)}</h1>
+                <div className="text-xs text-muted-foreground font-mono mt-1">
+                  {roomId}
                 </div>
               </div>
-            );
-          })}
-        </div>
-        <form onSubmit={onSend} className="border-t p-3 flex gap-2">
-          <Input
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={
-              ready ? "Type a message…" : (notReadyMessage(notReadyReason) || "Not ready")
-            }
-            disabled={sending || !ready}
-            title={notReadyMessage(notReadyReason) || undefined}
+              <div className="flex items-center gap-2">
+                <EditPatientDialog roomId={roomId} initial={editInitial} />
+                <Badge>E2E encrypted</Badge>
+              </div>
+            </div>
+            <dl className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <dt className="text-muted-foreground">Date of birth</dt>
+                <dd>{r.dob || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Phone</dt>
+                <dd>{r.phone || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Email</dt>
+                <dd>{r.email || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Updated</dt>
+                <dd>
+                  {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Times updated</dt>
+                <dd className="font-mono">{r.updatedTimes}</dd>
+              </div>
+              <div className="col-span-2">
+                <dt className="text-muted-foreground">Notes</dt>
+                <dd className="whitespace-pre-wrap">{r.notes || "—"}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <ProfileHistory
+            history={history}
+            currentSelf={session?.userId ?? null}
           />
-          <Button
-            type="submit"
-            disabled={sending || !text.trim() || !ready}
-            title={notReadyMessage(notReadyReason) || undefined}
-          >
-            Send
-          </Button>
-        </form>
+        </div>
+
+        <div className="rounded-lg border bg-card">
+          <div className="border-b px-4 py-3">
+            <h2 className="font-semibold">Encrypted timeline</h2>
+            <p className="text-xs text-muted-foreground">
+              Messages are visible only to members of this room.
+            </p>
+          </div>
+          <div className="max-h-[560px] overflow-y-auto p-4 space-y-2 text-sm">
+            {messages.length === 0 && (
+              <div className="text-muted-foreground text-center py-8">
+                No messages yet.
+              </div>
+            )}
+            {messages.map((ev) => {
+              const sender = ev.getSender();
+              const isMe = sender === session?.userId;
+              if (ev.isDecryptionFailure()) {
+                return (
+                  <UndecryptableMessage
+                    key={ev.getId()}
+                    event={ev}
+                    isMe={isMe}
+                  />
+                );
+              }
+              const content = ev.getContent() as { body?: string };
+              const body = content.body ?? "";
+              return (
+                <div
+                  key={ev.getId()}
+                  className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                >
+                  <div
+                    className={`max-w-[75%] rounded-lg px-3 py-2 ${
+                      isMe ? "bg-primary text-primary-foreground" : "bg-muted"
+                    }`}
+                  >
+                    {!isMe && (
+                      <div className="text-xs opacity-70 mb-1">{sender}</div>
+                    )}
+                    <div className="whitespace-pre-wrap break-words">{body}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <form onSubmit={onSend} className="border-t p-3 flex gap-2">
+            <Input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                ready ? "Type a message…" : (notReadyMessage(notReadyReason) || "Not ready")
+              }
+              disabled={sending || !ready}
+              title={notReadyMessage(notReadyReason) || undefined}
+            />
+            <Button
+              type="submit"
+              disabled={sending || !text.trim() || !ready}
+              title={notReadyMessage(notReadyReason) || undefined}
+            >
+              Send
+            </Button>
+          </form>
+        </div>
       </div>
     </div>
   );
