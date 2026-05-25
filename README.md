@@ -101,6 +101,108 @@ flowchart LR
 
 See `docs/v1.md` for per-flow sequence diagrams.
 
+## Package interactions
+
+The repo is a npm workspace with two packages:
+
+- **`client/`** — Next.js app. Owns UI, routing, app-domain config (clinics), and copy. Talks to Matrix only through `matrix-client`.
+- **`packages/matrix-client/`** — Matrix wrapper. Three entrypoints:
+  - `matrix-client` — core (`createMatrixClient`, `loginWithPassword`, `unlockWithSecurityKey`, `wipeLocalMatrixData`, …)
+  - `matrix-client/react` — `MatrixProvider`, `useMatrix`, `usePatientInvites`
+  - `matrix-client/patients` — domain helpers (`createPatient`, `listPatients`, `subscribeRooms`, …)
+
+The package depends on `matrix-js-sdk`; the client never imports `matrix-js-sdk` directly.
+
+### Sign in and session bootstrap
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as client/sign-in.tsx
+    participant Hook as matrix-client/react<br/>MatrixProvider
+    participant Core as matrix-client<br/>client.ts
+    participant SDK as matrix-js-sdk
+    participant HS as Synapse
+
+    UI->>Hook: signIn({baseUrl, user, pass})
+    Hook->>Core: loginWithPassword(input)
+    Core->>SDK: createClient + loginRequest
+    SDK->>HS: POST /login
+    HS-->>SDK: access_token, device_id
+    SDK-->>Core: login response
+    Core-->>Hook: StoredSession
+    Hook->>Hook: localStorage[sessionStorageKey] = session
+    Hook->>Core: createMatrixClient(session)
+    Core->>SDK: startClient + initRustCrypto
+    SDK->>HS: GET /sync
+    HS-->>SDK: sync state (PREPARED)
+    SDK-->>Core: MatrixClient
+    Core-->>Hook: client
+    Hook-->>UI: ready=false<br/>notReadyReason={kind:"needs_recovery_key"}
+```
+
+The provider blocks `ready` on `keyUnlockedThisSession` until the user proves they hold the recovery key — see next diagram.
+
+### Unlock recovery key (the access gate)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as client/status-bar.tsx
+    participant Core as matrix-client<br/>secret-storage.ts
+    participant Hook as matrix-client/react<br/>MatrixProvider
+    participant SDK as matrix-js-sdk crypto-api
+    participant HS as Synapse
+
+    UI->>Core: unlockWithSecurityKey(client, key)
+    Core->>SDK: decodeRecoveryKey + checkKey
+    SDK-->>Core: valid
+    Core->>SDK: bootstrapCrossSigning
+    Core->>SDK: checkKeyBackupAndEnable
+    SDK->>HS: GET /room_keys/version
+    HS-->>SDK: backup version
+    Core->>SDK: loadSessionBackupPrivateKeyFromSecretStorage
+    Core->>SDK: restoreKeyBackup
+    SDK->>HS: GET /room_keys/keys
+    HS-->>SDK: encrypted session keys
+    SDK-->>Core: {imported, total}
+    Core-->>UI: UnlockOutcome
+    UI->>Hook: markKeyUnlocked()
+    Hook-->>UI: ready=true, notReadyReason=null
+```
+
+`notReadyReason` is a typed union from `matrix-client/react`. The client's `notReadyMessage()` helper converts it to user-facing copy — copy lives in the app, not the package.
+
+### Create patient (mutation with E2EE)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant UI as client/patient-form.tsx
+    participant Hook as useMatrix()
+    participant Patients as matrix-client/patients<br/>createPatient
+    participant SDK as matrix-js-sdk MatrixClient
+    participant HS as Synapse
+
+    UI->>Hook: client (from context)
+    UI->>Patients: createPatient(client, record, {inviteUserIds})
+    Patients->>SDK: createRoom (encryption: megolm)
+    SDK->>HS: POST /createRoom
+    HS-->>SDK: room_id
+    Patients->>SDK: setRoomTag(roomId, PATIENT_TAG)
+    Patients->>SDK: getUserDeviceInfo(self + invitees)
+    Note over Patients,SDK: Prime megolm session for every device<br/>that must decrypt the first event
+    Patients->>SDK: sendEvent(PATIENT_RECORD)
+    SDK->>SDK: megolm encrypt
+    SDK->>HS: PUT /send/{type}/{txn}
+    Patients->>SDK: sendStateEvent(PROFILE_THREAD root)
+    Patients->>SDK: wait for KeyBackupSessionsRemaining=0
+    SDK->>HS: PUT /room_keys/keys (backup)
+    Patients-->>UI: roomId
+```
+
+`patient-form.tsx` only knows about the typed `PatientRecord` shape and the `createPatient` call — it never touches `matrix-js-sdk` types directly. The same pattern applies to `updatePatient`, `sendMessage`, `deletePatient`, etc.
+
 ## TI-Messenger reference architecture
 
 For comparison, this is gematik's TI-Messenger system overview — the German
