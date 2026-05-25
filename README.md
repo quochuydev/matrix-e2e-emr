@@ -105,20 +105,20 @@ See `docs/v1.md` for per-flow sequence diagrams.
 
 The repo is a npm workspace with two packages:
 
-- **`client/`** — Next.js app. Owns UI, routing, app-domain config (clinics), and copy. Talks to Matrix only through `matrix-client`.
+- **`web/`** — Next.js app. Owns UI, routing, app-domain config (clinics), and copy. Talks to Matrix only through `matrix-client`.
 - **`packages/matrix-client/`** — Matrix wrapper. Three entrypoints:
   - `matrix-client` — core (`createMatrixClient`, `loginWithPassword`, `unlockWithSecurityKey`, `wipeLocalMatrixData`, …)
   - `matrix-client/react` — `MatrixProvider`, `useMatrix`, `usePatientInvites`
   - `matrix-client/patients` — domain helpers (`createPatient`, `listPatients`, `subscribeRooms`, …)
 
-The package depends on `matrix-js-sdk`; the client never imports `matrix-js-sdk` directly.
+The package depends on `matrix-js-sdk`; the web app never imports `matrix-js-sdk` directly.
 
 ### Sign in and session bootstrap
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as client/sign-in.tsx
+    participant UI as web/sign-in.tsx
     participant Hook as matrix-client/react<br/>MatrixProvider
     participant Core as matrix-client<br/>client.ts
     participant SDK as matrix-js-sdk
@@ -148,7 +148,7 @@ The provider blocks `ready` on `keyUnlockedThisSession` until the user proves th
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as client/status-bar.tsx
+    participant UI as web/status-bar.tsx
     participant Core as matrix-client<br/>secret-storage.ts
     participant Hook as matrix-client/react<br/>MatrixProvider
     participant SDK as matrix-js-sdk crypto-api
@@ -171,14 +171,14 @@ sequenceDiagram
     Hook-->>UI: ready=true, notReadyReason=null
 ```
 
-`notReadyReason` is a typed union from `matrix-client/react`. The client's `notReadyMessage()` helper converts it to user-facing copy — copy lives in the app, not the package.
+`notReadyReason` is a typed union from `matrix-client/react`. The web app's `notReadyMessage()` helper converts it to user-facing copy — copy lives in the app, not the package.
 
 ### Create patient (mutation with E2EE)
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant UI as client/patient-form.tsx
+    participant UI as web/patient-form.tsx
     participant Hook as useMatrix()
     participant Patients as matrix-client/patients<br/>createPatient
     participant SDK as matrix-js-sdk MatrixClient
