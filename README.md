@@ -7,63 +7,96 @@ the room timeline.
 ## Architecture
 
 ```mermaid
-flowchart TB
-    User(["User<br/>clinician"]):::userNode
+%%{init: {'theme':'base', 'themeVariables': {'background':'#ffffff','primaryTextColor':'#1f2937','lineColor':'#9ca3af','clusterBkg':'#ffffff','clusterBorder':'#ffffff'}}}%%
 
-    subgraph App["matrix-emr — Next.js E2EE app"]
-        direction TB
+flowchart LR
+    subgraph App["E2EE with matrix.org"]
+        direction LR
 
-        subgraph BrowserZone["Browser session · trusted"]
+        subgraph ClinicPOV["Practice software"]
+            direction TB
+            Clinic(["Clinic"]):::actor
+        end
+
+        subgraph PatientPOV["Patient app"]
+            direction TB
+            Patient(["Patient<br/>own account"]):::actor
+        end
+
+        subgraph BrowserZone["Browser session"]
             direction TB
 
-            subgraph Gate["MatrixProvider · recovery-key gate"]
+            subgraph Gate["MatrixProvider"]
                 direction TB
-                SignIn["Sign-in<br/>username + password + recovery key"]:::leaf
-                Ready["Session ready<br/>keyUnlocked · pendingBackup"]:::leaf
+                SignIn["Sign-in<br/>username + password"]:::command
+                RecoveryKey["Enter recovery key"]:::command
+                Ready["Session ready"]:::event
+                SignIn --> RecoveryKey
+                RecoveryKey --> Ready
             end
 
-            subgraph Sdk["matrix-js-sdk + Rust crypto"]
+            subgraph Sdk["matrix-js-sdk<br/>@pumped-fn/lite-react"]
                 direction TB
-                Crypto["End-to-end encryption<br/>megolm · cross-signing · backup"]:::leaf
-                Store["IndexedDB<br/>crypto + room stores"]:::leaf
+                Crypto["End-to-end encryption"]:::policy
             end
 
-            subgraph Features["Feature surfaces"]
+            subgraph ClinicFeatures["Clinic features"]
                 direction TB
-                Patients["Patient CRUD<br/>1 encrypted room / patient"]:::leaf
-                Messaging["Per-patient messaging"]:::leaf
-                Invites["Invites · send · accept · decline"]:::leaf
+                PatientCRUD["Patient CRUD<br/>Create/Update encrypted rooms"]:::command
+                ClinicMsg["Message patient"]:::command
+                SendInvite["Invite patient to room"]:::command
+            end
+
+            subgraph PatientFeatures["Patient features"]
+                direction TB
+                ViewHolders["Get connected clinics"]:::command
+                ReadMsg["Read clinic messages"]:::command
+                RespondInvite["Accept/Decline invites"]:::command
             end
         end
 
-        subgraph SynapseZone["Synapse homeserver · sees ciphertext only"]
+        subgraph SynapseZone["Synapse homeserver"]
             direction TB
-            Rooms["Encrypted rooms<br/>profile thread + timeline"]:::leaf
-            Account["Account data<br/>SSSS + key backup"]:::leaf
+            Rooms["Encrypted rooms<br/>profile thread + timeline"]:::external_system
+            Account["Account data<br/>SSSS + key backup"]:::external_system
         end
     end
 
-    User --> SignIn
-    SignIn --> Ready
-    Ready --> Patients
-    Ready --> Messaging
-    Ready --> Invites
-    Patients --> Crypto
-    Messaging --> Crypto
-    Invites --> Crypto
-    Crypto --> Store
+    Clinic --> SignIn
+    Patient --> SignIn
+    Ready --> PatientCRUD
+    Ready --> ClinicMsg
+    Ready --> SendInvite
+    Ready --> ViewHolders
+    Ready --> ReadMsg
+    Ready --> RespondInvite
+    PatientCRUD --> Crypto
+    ClinicMsg --> Crypto
+    SendInvite --> Crypto
+    ViewHolders --> Crypto
+    ReadMsg --> Crypto
+    RespondInvite --> Crypto
     Crypto <--> Rooms
     Crypto <--> Account
 
-    classDef leaf fill:#0b1220,stroke:#ec4899,stroke-width:1.5px,color:#f9a8d4
-    classDef userNode fill:#1a0a14,stroke:#ec4899,stroke-width:2px,color:#fbcfe8
+    classDef actor fill:#ffffff,stroke:#166534,stroke-width:2px,color:#1f2937
+    classDef command fill:#ffffff,stroke:#a7c5fc,stroke-width:2px,color:#1f2937
+    classDef event fill:#ffffff,stroke:#feae57,stroke-width:2px,color:#1f2937
+    classDef policy fill:#ffffff,stroke:#7c3aed,stroke-width:2px,color:#1f2937
+    classDef reaction_policy fill:#ffffff,stroke:#da99e6,stroke-width:2px,color:#1f2937
+    classDef read_model fill:#ffffff,stroke:#b0deb3,stroke-width:2px,color:#1f2937
+    classDef ui fill:#ffffff,stroke:#f5f6f8,stroke-width:2px,color:#1f2937
+    classDef external_system fill:#ffffff,stroke:#ffb3c5,stroke-width:2px,color:#1f2937
 
-    style App fill:#0a0f1e,stroke:#22d3ee,stroke-width:2px,color:#a5f3fc
-    style BrowserZone fill:#0a0f1e,stroke:#22d3ee,stroke-width:2px,color:#a5f3fc
-    style SynapseZone fill:#0a0f1e,stroke:#22d3ee,stroke-width:2px,color:#a5f3fc
-    style Gate fill:#0a0f1e,stroke:#f59e0b,stroke-width:2px,color:#fcd34d
-    style Sdk fill:#0a0f1e,stroke:#f59e0b,stroke-width:2px,color:#fcd34d
-    style Features fill:#0a0f1e,stroke:#f59e0b,stroke-width:2px,color:#fcd34d
+    style ClinicPOV fill:#ffffff,stroke:#ffffff,stroke-width:0px,color:#6b21a8
+    style PatientPOV fill:#ffffff,stroke:#ffffff,stroke-width:0px,color:#6b21a8
+    style App fill:#ffffff,stroke:#22d3ee,stroke-width:2px,color:#155e75
+    style BrowserZone fill:#ffffff,stroke:#22d3ee,stroke-width:2px,color:#155e75
+    style SynapseZone fill:#ffffff,stroke:#22d3ee,stroke-width:2px,color:#155e75
+    style Gate fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    style Sdk fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    style ClinicFeatures fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
+    style PatientFeatures fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
 ```
 
 See `docs/v1.md` for per-flow sequence diagrams.
