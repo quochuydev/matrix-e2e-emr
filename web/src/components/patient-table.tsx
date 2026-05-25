@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -125,7 +126,7 @@ export function PatientTable() {
               <TableHead>Updated</TableHead>
               <TableHead className="w-[70px] text-right">Edits</TableHead>
               <TableHead className="w-[140px]">Room</TableHead>
-              <TableHead className="w-[120px] text-right" />
+              <TableHead className="w-[90px] text-right" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -179,12 +180,14 @@ export function PatientTable() {
                   <div className="flex items-center justify-end gap-1">
                     <Button
                       variant="outline"
-                      size="sm"
+                      size="icon"
+                      title="Open"
+                      aria-label="Open patient"
                       render={
                         <Link
                           href={`/patients/${encodeURIComponent(p.roomId)}`}
                         >
-                          Open
+                          <ArrowRight className="size-4" />
                         </Link>
                       }
                     />
