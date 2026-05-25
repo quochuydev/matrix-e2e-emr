@@ -5,7 +5,41 @@ import type {
   CryptoCallbacks,
   SecretStorageStatus,
 } from "matrix-js-sdk/lib/crypto-api";
+import type {
+  AuthDict,
+  UIAuthCallback,
+} from "matrix-js-sdk/lib/interactive-auth";
 import type { SecretStorageKeyDescriptionAesV1 } from "matrix-js-sdk/lib/secret-storage";
+
+type MatrixError = Error & { httpStatus?: number; data?: { session?: string } };
+
+/**
+ * UIA callback for endpoints like /keys/device_signing/upload. First call
+ * goes out with no auth so the server hands us a session id; we then resubmit
+ * with m.login.password. Won't work on MAS-only homeservers (matrix.org)
+ * since they reject password UIA — surface the server error in that case.
+ */
+function passwordAuthCallback(
+  userId: string,
+  password: string,
+): UIAuthCallback<void> {
+  return async (makeRequest) => {
+    try {
+      return await makeRequest(null);
+    } catch (e) {
+      const err = e as MatrixError;
+      const session = err?.data?.session;
+      if (err?.httpStatus !== 401 || !session) throw err;
+      const auth: AuthDict = {
+        type: "m.login.password",
+        identifier: { type: "m.id.user", user: userId },
+        password,
+        session,
+      };
+      return await makeRequest(auth);
+    }
+  };
+}
 
 type CachedKey = { keyId: string; key: Uint8Array };
 
@@ -76,21 +110,28 @@ export async function hasSecretStorage(
  */
 export async function generateRecoveryKey(
   client: MatrixClient,
+  opts: { password: string },
 ): Promise<{ recoveryKey: string }> {
   LOG("generateRecoveryKey start");
   const crypto = client.getCrypto();
   if (!crypto) throw new Error("Crypto is not initialized on this client.");
+  const userId = client.getUserId();
+  if (!userId) throw new Error("Client has no userId.");
 
   const generated = await crypto.createRecoveryKeyFromPassphrase();
   if (!generated.encodedPrivateKey) {
     throw new Error("Failed to generate recovery key (no encoded form).");
   }
 
-  try {
-    await crypto.bootstrapCrossSigning({});
-  } catch (e) {
-    LOG_ERR("bootstrapCrossSigning failed (non-fatal)", e);
-  }
+  // setupNewCrossSigning + auth callback are both required: bootstrap is a
+  // no-op when keys are already published, and without authUploadDeviceSigningKeys
+  // the SDK silently skips the upload, leaving SSSS holding privates whose
+  // pubkeys never reached the server.
+  await crypto.bootstrapCrossSigning({
+    setupNewCrossSigning: true,
+    authUploadDeviceSigningKeys: passwordAuthCallback(userId, opts.password),
+  });
+  LOG("bootstrapCrossSigning ok");
 
   await crypto.bootstrapSecretStorage({
     createSecretStorageKey: async () => generated,

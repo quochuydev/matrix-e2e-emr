@@ -99,6 +99,7 @@ export function StatusBar() {
   const [keyOpen, setKeyOpen] = useState(false);
   const [keying, setKeying] = useState(false);
   const [keyValue, setKeyValue] = useState("");
+  const [genPassword, setGenPassword] = useState("");
   // null = still probing; true = SSSS exists (Enter mode); false = no SSSS
   // (Generate mode).
   const [hasSSSS, setHasSSSS] = useState<boolean | null>(null);
@@ -148,6 +149,7 @@ export function StatusBar() {
   const closeKey = () => {
     setKeyOpen(false);
     setKeyValue("");
+    setGenPassword("");
     setGeneratedKey(null);
   };
 
@@ -174,10 +176,14 @@ export function StatusBar() {
 
   const confirmGenerate = async () => {
     if (!client) return;
+    if (!genPassword) return;
     setKeying(true);
     try {
-      const { recoveryKey } = await generateRecoveryKey(client);
+      const { recoveryKey } = await generateRecoveryKey(client, {
+        password: genPassword,
+      });
       setGeneratedKey(recoveryKey);
+      setGenPassword("");
       markKeyUnlocked();
       toast.success("Recovery key generated. Save it before closing.");
     } catch (err) {
@@ -485,13 +491,30 @@ export function StatusBar() {
               <p className="text-xs text-muted-foreground">
                 We&apos;ll create a new secret storage entry, store your
                 cross-signing keys in it, and create a new key backup — all
-                encrypted under the recovery key shown next.
+                encrypted under the recovery key shown next. Your password is
+                needed to authorize uploading the cross-signing public keys to
+                the server.
               </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="gen-password" className="text-xs">
+                  Account password
+                </Label>
+                <PasswordInput
+                  id="gen-password"
+                  value={genPassword}
+                  onChange={(e) => setGenPassword(e.target.value)}
+                  autoComplete="current-password"
+                  disabled={keying}
+                />
+              </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={closeKey} disabled={keying}>
                   Cancel
                 </Button>
-                <Button onClick={confirmGenerate} disabled={keying}>
+                <Button
+                  onClick={confirmGenerate}
+                  disabled={keying || !genPassword}
+                >
                   {keying ? "Generating…" : "Generate recovery key"}
                 </Button>
               </div>
