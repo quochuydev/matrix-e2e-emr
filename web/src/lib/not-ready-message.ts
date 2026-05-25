@@ -10,7 +10,7 @@ export function notReadyMessage(reason: NotReadyReason | null): string {
     case "catchup":
       return "Catching up with homeserver…";
     case "sync_error":
-      return "Sync error — waiting for reconnection.";
+      return "Sync error — waiting for reconnection..";
     case "syncing":
       return "Waiting for first sync to finish…";
     case "needs_recovery_key":
