@@ -9,6 +9,7 @@ import { CLINICS, findClinicByUserId, isClinicUser } from "@/lib/config";
 import { notReadyMessage } from "@/lib/not-ready-message";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PatientTable } from "@/components/patient-table";
 import { toast } from "sonner";
 
 type Membership = "invite" | "join";
@@ -102,62 +103,50 @@ export function PatientAccount() {
         </p>
       </section>
 
-      <section className="rounded-md border p-4 space-y-3">
-        <div className="text-sm font-medium">Profile</div>
-        <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
-          <dt className="text-muted-foreground">User ID</dt>
-          <dd className="font-mono break-all">{session?.userId ?? "—"}</dd>
-          <dt className="text-muted-foreground">Device</dt>
-          <dd className="font-mono break-all">{session?.deviceId ?? "—"}</dd>
-          <dt className="text-muted-foreground">Homeserver</dt>
-          <dd className="font-mono break-all">{session?.baseUrl ?? "—"}</dd>
-          <dt className="text-muted-foreground">Role</dt>
-          <dd>
-            {userIsClinic ? (
-              <span className="inline-flex items-center gap-2">
-                <Badge>Clinic</Badge>
-                <span className="text-muted-foreground">
-                  {ownClinic?.name}
+      <div className="grid gap-6 lg:grid-cols-10">
+        <section className="rounded-md border p-4 space-y-3 lg:col-span-6">
+          <div className="text-sm font-medium">Profile</div>
+          <dl className="grid grid-cols-[120px_1fr] gap-y-2 text-sm">
+            <dt className="text-muted-foreground">User ID</dt>
+            <dd className="font-mono break-all">{session?.userId ?? "—"}</dd>
+            <dt className="text-muted-foreground">Device</dt>
+            <dd className="font-mono break-all">{session?.deviceId ?? "—"}</dd>
+            <dt className="text-muted-foreground">Homeserver</dt>
+            <dd className="font-mono break-all">{session?.baseUrl ?? "—"}</dd>
+            <dt className="text-muted-foreground">Role</dt>
+            <dd>
+              {userIsClinic ? (
+                <span className="inline-flex items-center gap-2">
+                  <Badge>Clinic</Badge>
+                  <span className="text-muted-foreground">
+                    {ownClinic?.name}
+                  </span>
                 </span>
-              </span>
-            ) : (
-              <Badge variant="secondary">Patient</Badge>
-            )}
-          </dd>
-        </dl>
-        {userIsClinic && (
-          <div className="pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              render={<Link href="/patients">Open patient list</Link>}
-            />
-          </div>
-        )}
-      </section>
+              ) : (
+                <Badge variant="secondary">Patient</Badge>
+              )}
+            </dd>
+          </dl>
+        </section>
 
-      <section className="space-y-3">
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-lg font-semibold">Clinics</h2>
-          <span className="text-xs text-muted-foreground">
-            {relations.length} record{relations.length === 1 ? "" : "s"}
-          </span>
-        </div>
-        {relations.length === 0 ? (
-          <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
-            No clinics have invited you yet. When a clinic creates a record for
-            you, it will appear here.
+        <section className="space-y-3 lg:col-span-4">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold">Clinics</h2>
+            <span className="text-xs text-muted-foreground">
+              {relations.length} record{relations.length === 1 ? "" : "s"}
+            </span>
           </div>
-        ) : (
-          <ul className="space-y-2">
-            {relations.map((rel) => {
-              const busy = busyRoom === rel.roomId;
-              const isInvite = rel.membership === "invite";
-              return (
-                <li
-                  key={rel.roomId}
-                  className="flex items-center justify-between gap-3 rounded-md border px-4 py-3"
-                >
+          {relations.length === 0 ? (
+            <div className="rounded-md border border-dashed p-8 text-center text-sm text-muted-foreground">
+              No clinics have invited you yet. When a clinic creates a record
+              for you, it will appear here.
+            </div>
+          ) : (
+            <ul className="space-y-2">
+              {relations.map((rel) => {
+                const busy = busyRoom === rel.roomId;
+                const isInvite = rel.membership === "invite";
+                const body = (
                   <div className="min-w-0 space-y-1">
                     <div className="font-medium truncate">{rel.clinicName}</div>
                     <div className="text-xs text-muted-foreground font-mono truncate">
@@ -167,37 +156,60 @@ export function PatientAccount() {
                       Room: {rel.roomName}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Badge variant={isInvite ? "destructive" : "default"}>
-                      {isInvite ? "Invited" : "Joined"}
-                    </Badge>
+                );
+                return (
+                  <li
+                    key={rel.roomId}
+                    className="flex items-center justify-between gap-3 rounded-md border px-4 py-3"
+                  >
                     {isInvite ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={busy || !!busyRoom}
-                          onClick={() => handleDecline(rel.roomId)}
-                        >
-                          {busy ? "…" : "Decline"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={busy || !!busyRoom || !ready}
-                          title={!ready ? notReadyMessage(notReadyReason) : undefined}
-                          onClick={() => handleAccept(rel.roomId, rel.clinicName)}
-                        >
-                          {busy ? "…" : "Accept"}
-                        </Button>
-                      </>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+                      body
+                    ) : (
+                      <Link
+                        href={`/patients/${encodeURIComponent(rel.roomId)}`}
+                        className="min-w-0 flex-1 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                      >
+                        {body}
+                      </Link>
+                    )}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge variant={isInvite ? "destructive" : "default"}>
+                        {isInvite ? "Invited" : "Joined"}
+                      </Badge>
+                      {isInvite ? (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy || !!busyRoom}
+                            onClick={() => handleDecline(rel.roomId)}
+                          >
+                            {busy ? "…" : "Decline"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            disabled={busy || !!busyRoom || !ready}
+                            title={
+                              !ready ? notReadyMessage(notReadyReason) : undefined
+                            }
+                            onClick={() =>
+                              handleAccept(rel.roomId, rel.clinicName)
+                            }
+                          >
+                            {busy ? "…" : "Accept"}
+                          </Button>
+                        </>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      {userIsClinic && <PatientTable />}
     </div>
   );
 }

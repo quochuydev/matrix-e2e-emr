@@ -125,7 +125,7 @@ export function PatientTable() {
               <TableHead>Updated</TableHead>
               <TableHead className="w-[70px] text-right">Edits</TableHead>
               <TableHead className="w-[140px]">Room</TableHead>
-              <TableHead className="w-[40px]" />
+              <TableHead className="w-[120px] text-right" />
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -176,58 +176,65 @@ export function PatientTable() {
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
+                  <div className="flex items-center justify-end gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
                       render={
-                        <Button variant="ghost" size="icon">
-                          ⋯
-                        </Button>
+                        <Link
+                          href={`/patients/${encodeURIComponent(p.roomId)}`}
+                        >
+                          Open
+                        </Link>
                       }
                     />
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
                         render={
-                          <Link
-                            href={`/patients/${encodeURIComponent(p.roomId)}`}
-                          >
-                            Open
-                          </Link>
+                          <Button variant="ghost" size="icon">
+                            ⋯
+                          </Button>
                         }
                       />
-                      <DropdownMenuItem
-                        onClick={() => {
-                          if (!client) return;
-                          const history = listPatientHistory(client, p.roomId);
-                          const events = exportRoomEvents(client, p.roomId);
-                          downloadJson(
-                            `patient-${slugify(fullName(p.record))}-${p.roomId.slice(1, 11)}.json`,
-                            {
-                              exportedAt: new Date().toISOString(),
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={() => {
+                            if (!client) return;
+                            const history = listPatientHistory(
+                              client,
+                              p.roomId,
+                            );
+                            const events = exportRoomEvents(client, p.roomId);
+                            downloadJson(
+                              `patient-${slugify(fullName(p.record))}-${p.roomId.slice(1, 11)}.json`,
+                              {
+                                exportedAt: new Date().toISOString(),
+                                roomId: p.roomId,
+                                record: p.record,
+                                history,
+                                events,
+                              },
+                            );
+                          }}
+                        >
+                          Export JSON
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={() =>
+                            setPendingDelete({
                               roomId: p.roomId,
-                              record: p.record,
-                              history,
-                              events,
-                            },
-                          );
-                        }}
-                      >
-                        Export JSON
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() =>
-                          setPendingDelete({
-                            roomId: p.roomId,
-                            name: fullName(p.record),
-                          })
-                        }
-                        variant="destructive"
-                        disabled={!ready}
-                        title={notReadyMessage(notReadyReason) || undefined}
-                      >
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                              name: fullName(p.record),
+                            })
+                          }
+                          variant="destructive"
+                          disabled={!ready}
+                          title={notReadyMessage(notReadyReason) || undefined}
+                        >
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
                 </TableCell>
               </TableRow>
             ))}
