@@ -35,7 +35,7 @@ flowchart LR
                 RecoveryKey --> Ready
             end
 
-            subgraph Sdk["matrix-js-sdk<br/>@pumped-fn/lite-react"]
+            subgraph Sdk["matrix-js-sdk"]
                 direction TB
                 Crypto["End-to-end encryption"]:::policy
             end
