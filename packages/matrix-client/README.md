@@ -37,6 +37,7 @@ flowchart LR
     B6(["MatrixProvider + useMatrix<br/>React lifecycle + sync state"]):::cyan
     B7(["createPatient / updatePatient<br/>rooms-as-records"]):::cyan
     B8(["usePatientInvites"]):::cyan
+    B9(["requestKeyFromPeers<br/>cross-device session forwarding for UTDs"]):::orange
   end
 
   subgraph SDK["matrix-js-sdk"]
@@ -58,6 +59,8 @@ flowchart LR
   B4 --> A4
   B7 --> A1
   B6 --> B1
+  B9 --> A4
+  B9 --> A1
 
   classDef orange fill:#ffffff,stroke:#f59e0b,stroke-width:2px,color:#000000
   classDef cyan fill:#ffffff,stroke:#06b6d4,stroke-width:2px,color:#000000
@@ -87,6 +90,7 @@ sequenceDiagram
   MC->>SDK: startClient initialSyncLimit 20
   MC->>HS: GET /sync
   HS-->>MC: PREPARED
+  MC->>MC: startPeerKeyShare<br/>attach to-device listener
   MC->>SDK: crypto.checkKeyBackupAndEnable
   MC->>SDK: crypto.restoreKeyBackup
   Note over MC: silent if no cached backup key yet
@@ -114,6 +118,8 @@ sequenceDiagram
   MC->>SS: getDefaultKeyId + checkKey
   Note over MC: caches key in module-local<br/>getSecretStorageKey callback
   MC->>SDK: bootstrapCrossSigning
+  MC->>SDK: crossSignDevice deviceId
+  Note over MC,SDK: bootstrap is a no-op if CS already exists<br/>so we sign this device explicitly
   MC->>KB: checkKeyBackupAndEnable
   MC->>SDK: loadSessionBackupPrivateKeyFromSecretStorage
   MC->>KB: restoreKeyBackup
@@ -232,4 +238,7 @@ function PatientList() {
 | `src/patients.ts`     | `createPatient`, `updatePatient`, `listPatients`, `listPatientHistory`, invite + message helpers |
 | `src/react/provider.tsx` | `MatrixProvider`, `useMatrix`                                         |
 | `src/react/invites.ts`   | `usePatientInvites`                                                    |
+| `src/peer-key-share.ts`  | `startPeerKeyShare`, `requestKeyFromPeers`, peer-share state store      |
+| `src/react/peer-key-share.ts` | `usePeerKeyShareState`                                            |
+| `src/verification.ts`    | `getDeviceVerification`                                                |
 | `src/types.ts`        | `StoredSession`, default URLs                                            |

@@ -9,16 +9,12 @@ export {
   generateRecoveryKey,
   getStatus,
   hasCachedBackupDecryptionKey,
-  hasCachedSecurityKey,
   hasSecretStorage,
   makeCryptoCallbacks,
   unlockWithSecurityKey,
   type UnlockOutcome,
 } from "./secret-storage";
-export {
-  getDeviceVerification,
-  type DeviceVerification,
-} from "./verification";
+export { getDeviceVerification, type DeviceVerification } from "./verification";
 export {
   getPeerKeyShareState,
   requestKeyFromPeers,

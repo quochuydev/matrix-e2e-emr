@@ -63,10 +63,6 @@ export function makeCryptoCallbacks(): CryptoCallbacks {
   };
 }
 
-export function hasCachedSecurityKey(): boolean {
-  return cached !== null;
-}
-
 /**
  * True when the backup decryption key is already in the rust crypto store —
  * i.e. the user proved they hold the recovery key on a previous load and the
@@ -95,9 +91,7 @@ export function clearCachedSecurityKey(): void {
  * Whether the user's account already has secret storage set up. Used by the
  * Recovery key modal to decide between Generate and Enter.
  */
-export async function hasSecretStorage(
-  client: MatrixClient,
-): Promise<boolean> {
+export async function hasSecretStorage(client: MatrixClient): Promise<boolean> {
   const keyId = await client.secretStorage.getDefaultKeyId();
   return !!keyId;
 }
@@ -165,9 +159,8 @@ export async function cacheSecurityKey(
 ): Promise<{ keyId: string }> {
   LOG("cacheSecurityKey start");
   const trimmed = recoveryKey.replace(/\s+/g, "");
-  const { decodeRecoveryKey } = await import(
-    "matrix-js-sdk/lib/crypto-api/recovery-key"
-  );
+  const { decodeRecoveryKey } =
+    await import("matrix-js-sdk/lib/crypto-api/recovery-key");
 
   let keyBytes: Uint8Array;
   try {
@@ -304,9 +297,7 @@ export async function unlockWithSecurityKey(
   return { crossSigningReady, secretStorageReady, keyBackupRestored };
 }
 
-export async function getStatus(
-  client: MatrixClient,
-): Promise<{
+export async function getStatus(client: MatrixClient): Promise<{
   crossSigningReady: boolean;
   secretStorageReady: boolean;
   status: SecretStorageStatus | null;
