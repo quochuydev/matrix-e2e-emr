@@ -19,6 +19,13 @@ export {
   getDeviceVerification,
   type DeviceVerification,
 } from "./verification";
+export {
+  getPeerKeyShareState,
+  requestKeyFromPeers,
+  subscribePeerKeyShareState,
+  type PeerKeyShareState,
+  type RequestKeyArgs,
+} from "./peer-key-share";
 export { wipeLocalMatrixData } from "./wipe";
 export {
   DEFAULT_HOMESERVER_URL,

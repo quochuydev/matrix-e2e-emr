@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { MatrixEvent } from "matrix-js-sdk";
-import { useMatrix } from "matrix-client/react";
+import { useMatrix, usePeerKeyShareState } from "matrix-client/react";
+import { requestKeyFromPeers } from "matrix-client";
 import {
   fullName,
   getPatient,
@@ -239,6 +240,7 @@ function UndecryptableMessage({
   event: MatrixEvent;
   isMe: boolean;
 }) {
+  const { client, session } = useMatrix();
   const wire = event.getWireContent() as {
     session_id?: string;
     sender_key?: string;
@@ -250,6 +252,23 @@ function UndecryptableMessage({
   const eventId = event.getId() ?? "";
   const sender = event.getSender() ?? "";
   const ts = event.getTs();
+  const sessionId = wire.session_id;
+  const senderKey = wire.sender_key;
+  const roomId = event.getRoomId();
+
+  const peerState = usePeerKeyShareState(sessionId);
+
+  useEffect(() => {
+    if (!client) return;
+    if (!sender || !sessionId || !senderKey || !roomId) return;
+    void requestKeyFromPeers(client, {
+      fromUserId: sender,
+      roomId,
+      sessionId,
+      senderKey,
+    });
+  }, [client, sender, sessionId, senderKey, roomId]);
+
   const lines = [
     `code:       ${code}`,
     `event_id:   ${eventId}`,
@@ -269,6 +288,7 @@ function UndecryptableMessage({
       toast.error(err instanceof Error ? err.message : String(err));
     }
   };
+  const peerLine = peerKeyShareLine(peerState);
   return (
     <div className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
       <div className="max-w-[85%] rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 space-y-2">
@@ -284,6 +304,9 @@ function UndecryptableMessage({
         <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-background/60 rounded px-2 py-1.5">
           {block}
         </pre>
+        {peerLine && (
+          <div className="text-xs text-muted-foreground">{peerLine}</div>
+        )}
         <div className="flex justify-end">
           <Button
             type="button"
@@ -298,6 +321,29 @@ function UndecryptableMessage({
       </div>
     </div>
   );
+}
+
+function peerKeyShareLine(
+  state: ReturnType<typeof usePeerKeyShareState>,
+): string | null {
+  switch (state.kind) {
+    case "idle":
+      return "peer-share: idle (request not fired)";
+    case "requesting":
+      return "⟳ Asking your other devices for this key…";
+    case "received":
+      return "↓ Got the key, decrypting…";
+    case "imported":
+      return "✓ Key imported";
+    case "no-responders":
+      return "No other devices online to ask";
+    case "timeout":
+      return "No reply from your other devices";
+    case "error":
+      return `Key share failed: ${state.message}`;
+    default:
+      return null;
+  }
 }
 
 const RECORD_FIELDS = [

@@ -3,6 +3,7 @@
 import type { MatrixClient } from "matrix-js-sdk";
 import type { StoredSession } from "./types";
 import { makeCryptoCallbacks } from "./secret-storage";
+import { startPeerKeyShare } from "./peer-key-share";
 
 export type LoginInput = {
   baseUrl: string;
@@ -104,6 +105,7 @@ export async function createMatrixClient(
   await client.initRustCrypto();
   await client.startClient({ initialSyncLimit: 20 });
   await waitForPrepared(client);
+  startPeerKeyShare(client);
   const crypto = client.getCrypto();
   if (crypto) {
     try {
