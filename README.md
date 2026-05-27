@@ -207,92 +207,9 @@ sequenceDiagram
 
 ## TI-Messenger reference architecture
 
-For comparison, this is gematik's TI-Messenger system overview — the German
-healthcare Matrix federation this project could one day plug into.
-
-```mermaid
-flowchart LR
-    subgraph CLIENT[" "]
-        direction TB
-        TMC[TI-Messenger-Client]
-        OAC[Org-Admin-Client]
-        FRD[Frontend des<br/>Registrierungs-Dienstes]
-    end
-
-    subgraph VZD[VZD-FHIR-Directory]
-        direction LR
-        FP[FHIR-Proxy]
-        FD[(FHIR-Directory)]
-        AS[Auth-Service]
-        OAUTH[OAuth]
-    end
-
-    subgraph FACH[TI-Messenger-Fachdienst]
-        direction TB
-        RD[Registrierungs-Dienst]
-        PG[Push-Gateway]
-        subgraph MS[Messenger-Service]
-            direction LR
-            MP[Messenger-Proxy]
-            MH[Matrix-Homeserver]
-        end
-    end
-
-    IDP[Zentraler<br/>IDP-Dienst]
-    subgraph FACH2[TI-Messenger-Fachdienst]
-        F2[ peer provider ]
-    end
-    AUTH[Authentifizierungsdienst]
-
-    TMC -- "Matrix – Client Server API" --> MP
-    TMC -- "I_TiMessengerContactManagement" --> MP
-    TMC -- "I_Registration" --> RD
-    FRD -- "I_Registration" --> RD
-    OAC -- "I_requestToken" --> RD
-
-    MP <-- "HTTP(S) forward" --> MH
-    RD -- "I_internVerification" --> MS
-
-    RD -- "FHIRDirectoryTIMProviderAPI" --> FP
-    FP --- FD
-    FP --- AS
-    AS --- OAUTH
-    TMC -- "FHIRDirectorySearchAPI" --> FP
-    OAC -- "FHIRDirectoryOwnerAPI" --> FP
-
-    AS -- "OIDC" --> IDP
-    RD -- "OIDC" --> IDP
-
-    MH <-- "Matrix – Server Server API" --> FACH2
-
-    TMC -- "Authentifizierungsverfahren" --> AUTH
-    FACH -- "Authentifizierungsverfahren" --> AUTH
-
-    classDef green    fill:#d4e8c8,stroke:#6b9c4e,color:#000
-    classDef orange   fill:#fde2cc,stroke:#d97f3e,color:#000
-    classDef blue     fill:#cfe2ef,stroke:#4a90b8,color:#000
-    classDef darkblue fill:#a8c8dc,stroke:#3a7a9c,color:#000
-    classDef gray     fill:#ececec,stroke:#888,color:#000
-
-    class TMC,OAC,FRD green
-    class FP,FD,AS,OAUTH orange
-    class RD,PG blue
-    class MP,MH darkblue
-    class IDP,AUTH,F2 gray
-
-    style CLIENT fill:#d4e8c8,stroke:#6b9c4e
-    style VZD    fill:#fde2cc,stroke:#d97f3e
-    style FACH   fill:#cfe2ef,stroke:#4a90b8
-    style MS     fill:#a8c8dc,stroke:#3a7a9c
-    style FACH2  fill:#cfe2ef,stroke:#4a90b8
-```
-
 Source: [gematik/api-ti-messenger](https://github.com/gematik/api-ti-messenger).
 
-### English translation
-
-Same diagram with the German labels translated, for readers unfamiliar
-with the gematik terminology.
+Same diagram with the German labels translated, for readers unfamiliar with the gematik terminology.
 
 ```mermaid
 flowchart LR
@@ -370,28 +287,3 @@ flowchart LR
     style MS     fill:#a8c8dc,stroke:#3a7a9c
     style FACH2  fill:#cfe2ef,stroke:#4a90b8
 ```
-
-Glossary:
-
-- **VZD** (*Verzeichnisdienst*) — Directory Service. The federation-wide
-  FHIR directory of organizations and users.
-- **Fachdienst** — literally "specialist service"; in gematik terms it
-  means a provider-operated service that participates in the TI
-  federation. Each TI-Messenger Fachdienst runs its own Matrix homeserver.
-- **Registrierungs-Dienst** — Registration Service. Registers users and
-  organizations against the directory before they can use the messenger.
-- **IDP-Dienst** — Identity Provider Service. The central OIDC issuer
-  shared across the federation.
-- **Authentifizierungsverfahren** — Authentication procedure (the actual
-  method by which a client proves identity to the IDP).
-
-## Development
-
-```bash
-docker compose up -d   # local Synapse homeserver
-pnpm install
-pnpm dev
-```
-
-First session generates a recovery key (shown once). Subsequent sessions must
-enter that key on sign-in — no feature is usable until the key is verified.
