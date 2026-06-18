@@ -41,6 +41,14 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Semantic status tokens — see DESIGN.md §2. Scarce by design. */
+  --color-secure: var(--secure);
+  --color-secure-soft: var(--secure-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  /* Brand gradient — teal → blue. Active nav, highlight cards (DESIGN.md §2). */
+  --color-brand-from: var(--brand-from);
+  --color-brand-to: var(--brand-to);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -83,6 +91,14 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Trust-blue accent + semantic status (DESIGN.md). Used scarcely. */
+  --secure: oklch(0.52 0.18 264);
+  --secure-soft: oklch(0.96 0.02 270);
+  --success: oklch(0.63 0.17 149);
+  --warning: oklch(0.68 0.16 55);
+  /* Brand gradient stops — teal → blue. */
+  --brand-from: oklch(0.84 0.12 172);
+  --brand-to: oklch(0.68 0.14 248);
 }
 
 .dark {
@@ -117,6 +133,30 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  /* Lighter in dark theme for contrast on the dark canvas. */
+  --secure: oklch(0.7 0.15 264);
+  --secure-soft: oklch(0.32 0.06 266);
+  --success: oklch(0.72 0.15 149);
+  --warning: oklch(0.78 0.14 70);
+  --brand-from: oklch(0.72 0.12 172);
+  --brand-to: oklch(0.6 0.14 248);
+}
+
+@layer components {
+  /* Teal → blue brand gradient. See DESIGN.md §2 (used scarcely). */
+  .bg-brand-gradient {
+    background-image: linear-gradient(
+      135deg,
+      var(--brand-from),
+      var(--brand-to)
+    );
+  }
+
+  /* Advanced sign-in fields (homeserver / identity server) are hidden by
+     default. Delete the `advanced-fields` class in devtools to reveal them. */
+  .advanced-fields {
+    display: none;
+  }
 }
 
 @layer base {

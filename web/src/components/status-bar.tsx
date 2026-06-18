@@ -50,25 +50,54 @@ function formatAgo(ts: number, now: number): string {
   return `${hours}h ago`;
 }
 
+type StatusTone = "ok" | "warn" | "error" | "pending";
+
 function syncLabel(state: string | null): {
   label: string;
-  variant: "default" | "secondary" | "destructive" | "outline";
+  tone: StatusTone;
 } {
   switch (state) {
     case "PREPARED":
     case "SYNCING":
-      return { label: "Synced", variant: "default" };
+      return { label: "Synced", tone: "ok" };
     case "CATCHUP":
-      return { label: "Catching up", variant: "secondary" };
+      return { label: "Catching up", tone: "pending" };
     case "RECONNECTING":
-      return { label: "Reconnecting", variant: "secondary" };
+      return { label: "Reconnecting", tone: "pending" };
     case "ERROR":
-      return { label: "Sync error", variant: "destructive" };
+      return { label: "Sync error", tone: "error" };
     case "STOPPED":
-      return { label: "Stopped", variant: "destructive" };
+      return { label: "Stopped", tone: "error" };
     default:
-      return { label: state ?? "Connecting", variant: "secondary" };
+      return { label: state ?? "Connecting", tone: "pending" };
   }
+}
+
+const STATUS_DOT: Record<StatusTone, string> = {
+  ok: "bg-success",
+  warn: "bg-warning",
+  error: "bg-destructive",
+  pending: "bg-muted-foreground/40 animate-pulse",
+};
+
+function StatusPill({
+  tone,
+  title,
+  children,
+}: {
+  tone: StatusTone;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Badge variant="outline" title={title} className="gap-1.5 font-normal">
+      <span
+        aria-hidden
+        className={`size-1.5 shrink-0 rounded-full ${STATUS_DOT[tone]}`}
+      />
+      {children}
+    </Badge>
+  );
 }
 
 export function StatusBar() {
@@ -240,43 +269,6 @@ export function StatusBar() {
     <>
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={ready ? "default" : "destructive"}>
-            {ready ? "Ready" : "Read-only"}
-          </Badge>
-          <Badge variant={sync.variant}>{sync.label}</Badge>
-          <Badge variant={encOk ? "default" : "secondary"}>
-            {encOk ? "E2E ready" : "E2E locked"}
-          </Badge>
-          <Badge
-            variant={
-              deviceVerified === null
-                ? "secondary"
-                : deviceVerified
-                  ? "default"
-                  : "destructive"
-            }
-            title={
-              deviceVerified === null
-                ? "Checking device verification…"
-                : deviceVerified
-                  ? "This device is signed by your account's cross-signing key."
-                  : "This device is not cross-signed. Unlock with your recovery key to verify it."
-            }
-          >
-            {deviceVerified === null
-              ? "Device …"
-              : deviceVerified
-                ? "Device verified"
-                : "Device unverified"}
-          </Badge>
-          <Badge variant={backupOn ? "default" : "secondary"}>
-            {backupOn ? `Backup v${cryptoStatus?.backupVersion}` : "No backup"}
-          </Badge>
-          {backupOn && pendingBackup > 0 && (
-            <Badge variant="secondary">
-              Uploading {pendingBackup} key{pendingBackup === 1 ? "" : "s"}…
-            </Badge>
-          )}
           {pendingInvites.length > 0 && (
             <button
               type="button"
@@ -290,11 +282,6 @@ export function StatusBar() {
               </Badge>
             </button>
           )}
-          {lastSyncedAt && (
-            <span className="text-muted-foreground">
-              synced {formatAgo(lastSyncedAt, now)}
-            </span>
-          )}
           {!ready && notReadyReason && (
             <span className="text-destructive">
               {notReadyMessage(notReadyReason)}
@@ -306,6 +293,13 @@ export function StatusBar() {
             <PopoverTrigger
               render={
                 <Button variant="outline" size="sm">
+                  <span
+                    aria-hidden
+                    title={ready && encOk ? "All systems ready" : "Action needed"}
+                    className={`mr-1 size-2 shrink-0 rounded-full ${
+                      ready && encOk ? "bg-success" : "bg-warning"
+                    }`}
+                  />
                   <span className="font-mono truncate max-w-[160px]">
                     {session?.userId ?? "Account"}
                   </span>
@@ -319,6 +313,57 @@ export function StatusBar() {
               }
             />
             <PopoverContent className="w-80 space-y-3">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <div className="flex flex-wrap gap-1.5">
+                  <StatusPill tone={ready ? "ok" : "error"}>
+                    {ready ? "Ready" : "Read-only"}
+                  </StatusPill>
+                  <StatusPill tone={sync.tone}>{sync.label}</StatusPill>
+                  <StatusPill tone={encOk ? "ok" : "warn"}>
+                    {encOk ? "E2E ready" : "E2E locked"}
+                  </StatusPill>
+                  <StatusPill
+                    tone={
+                      deviceVerified === null
+                        ? "pending"
+                        : deviceVerified
+                          ? "ok"
+                          : "error"
+                    }
+                    title={
+                      deviceVerified === null
+                        ? "Checking device verification…"
+                        : deviceVerified
+                          ? "This device is signed by your account's cross-signing key."
+                          : "This device is not cross-signed. Unlock with your recovery key to verify it."
+                    }
+                  >
+                    {deviceVerified === null
+                      ? "Device …"
+                      : deviceVerified
+                        ? "Device verified"
+                        : "Device unverified"}
+                  </StatusPill>
+                  <StatusPill tone={backupOn ? "ok" : "warn"}>
+                    {backupOn
+                      ? `Backup v${cryptoStatus?.backupVersion}`
+                      : "No backup"}
+                  </StatusPill>
+                  {backupOn && pendingBackup > 0 && (
+                    <StatusPill tone="pending">
+                      Uploading {pendingBackup} key
+                      {pendingBackup === 1 ? "" : "s"}…
+                    </StatusPill>
+                  )}
+                </div>
+                {lastSyncedAt && (
+                  <span className="text-xs text-muted-foreground">
+                    synced {formatAgo(lastSyncedAt, now)}
+                  </span>
+                )}
+              </div>
+              <div className="border-t -mx-3" />
               <div className="space-y-2">
                 {session?.userId && (
                   <div className="space-y-1">

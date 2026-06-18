@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { HeartPulse } from "lucide-react";
 import { useMatrix } from "matrix-client/react";
 import {
   DEFAULT_HOMESERVER_URL,
@@ -32,7 +33,9 @@ export function SignIn() {
         username: username.trim(),
         password,
       });
-      toast.success("Signed in. Enter your recovery key from the status bar to unlock encrypted history.");
+      toast.success(
+        "Signed in. Enter your recovery key from the status bar to unlock encrypted history.",
+      );
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -44,32 +47,21 @@ export function SignIn() {
     <div className="flex flex-1 items-center justify-center p-8">
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-6 rounded-lg border bg-card p-8 shadow-sm"
+        className="w-full max-w-md space-y-6 rounded-xl border bg-card p-8 shadow-sm"
       >
-        <div>
-          <h1 className="text-2xl font-semibold">Sign in to Matrix</h1>
-          <p className="text-sm text-muted-foreground mt-1">
+        <div className="flex flex-col items-center text-center">
+          <span className="flex size-12 items-center justify-center rounded-xl bg-brand-gradient text-white shadow-sm">
+            <HeartPulse className="size-6" />
+          </span>
+          <h1 className="mt-4 text-xl font-semibold">
+            Sign in to Patient Records
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
             Each browser gets its own device. Use your Matrix username and
             password.
           </p>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="baseUrl">Homeserver</Label>
-          <Input
-            id="baseUrl"
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="identityServerUrl">Identity server</Label>
-          <Input
-            id="identityServerUrl"
-            value={identityServerUrl}
-            onChange={(e) => setIdentityServerUrl(e.target.value)}
-          />
-        </div>
+
         <div className="space-y-2">
           <Label htmlFor="username">Username</Label>
           <Input
@@ -91,6 +83,29 @@ export function SignIn() {
             required
           />
         </div>
+
+        {/* Advanced: hidden via the `advanced-fields` class. Remove the class
+            in devtools to edit the homeserver / identity server. */}
+        <div className="advanced-fields space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="baseUrl">Homeserver</Label>
+            <Input
+              id="baseUrl"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="identityServerUrl">Identity server</Label>
+            <Input
+              id="identityServerUrl"
+              value={identityServerUrl}
+              onChange={(e) => setIdentityServerUrl(e.target.value)}
+            />
+          </div>
+        </div>
+
         {error && (
           <p className="text-sm text-destructive break-words">{error}</p>
         )}
@@ -101,6 +116,18 @@ export function SignIn() {
         >
           {submitting || status === "connecting" ? "Signing in…" : "Sign in"}
         </Button>
+
+        <p className="text-center text-sm text-muted-foreground">
+          Don&apos;t have an account?{" "}
+          <a
+            href="https://app.element.io/#/register"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-secure hover:underline"
+          >
+            Create one
+          </a>
+        </p>
       </form>
     </div>
   );

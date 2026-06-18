@@ -466,6 +466,52 @@ export async function sendMessage(
   await ensureSessionInBackup(client);
 }
 
+/** Reference to an encrypted attachment stored externally (e.g. in R2). The
+ * AES key/iv travel inside the megolm-encrypted event, not with the bytes. */
+export type EncryptedFileRef = {
+  url: string;
+  iv: string;
+  hashes: { sha256: string };
+  key: {
+    alg: string;
+    ext: boolean;
+    k: string;
+    key_ops: string[];
+    kty: string;
+  };
+  v: string;
+};
+
+/** Send an m.image event referencing an already-uploaded encrypted file. */
+export async function sendImageMessage(
+  client: MatrixClient,
+  roomId: string,
+  args: {
+    body: string;
+    info: { mimetype: string; size: number };
+    file: EncryptedFileRef;
+  },
+): Promise<void> {
+  await client.sendEvent(roomId, EventType.RoomMessage, {
+    msgtype: MsgType.Image,
+    body: args.body,
+    filename: args.body,
+    info: args.info,
+    file: args.file,
+  });
+  await ensureSessionInBackup(client);
+}
+
+/** Redact (delete) a message event. Requires power level to redact others'
+ * messages; redacting your own always works. */
+export async function redactMessage(
+  client: MatrixClient,
+  roomId: string,
+  eventId: string,
+): Promise<void> {
+  await client.redactEvent(roomId, eventId);
+}
+
 export function listPendingInvites(client: MatrixClient): PendingInvite[] {
   const userId = client.getUserId();
   return client

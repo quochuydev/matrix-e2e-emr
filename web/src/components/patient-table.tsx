@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -178,19 +177,6 @@ export function PatientTable() {
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      title="Open"
-                      aria-label="Open patient"
-                      render={
-                        <Link
-                          href={`/patients/${encodeURIComponent(p.roomId)}`}
-                        >
-                          <ArrowRight className="size-4" />
-                        </Link>
-                      }
-                    />
                     <DropdownMenu>
                       <DropdownMenuTrigger
                         render={
@@ -200,6 +186,15 @@ export function PatientTable() {
                         }
                       />
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          render={
+                            <Link
+                              href={`/patients/${encodeURIComponent(p.roomId)}`}
+                            >
+                              Edit
+                            </Link>
+                          }
+                        />
                         <DropdownMenuItem
                           onClick={() => {
                             if (!client) return;

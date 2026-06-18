@@ -1,7 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import {
+  Calendar,
+  Clock,
+  FileText,
+  Hash,
+  Mail,
+  Paperclip,
+  Pencil,
+  Phone,
+  ShieldCheck,
+  Trash2,
+} from "lucide-react";
 import type { MatrixEvent } from "matrix-js-sdk";
 import { useMatrix, usePeerKeyShareState } from "matrix-client/react";
 import { requestKeyFromPeers } from "matrix-client";
@@ -10,6 +22,8 @@ import {
   getPatient,
   listMessages,
   listPatientHistory,
+  redactMessage,
+  sendImageMessage,
   sendMessage,
   subscribeRooms,
   type Patient,
@@ -20,15 +34,165 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EditPatientDialog } from "./patient-form";
+import {
+  fetchAndDecryptImage,
+  uploadEncryptedImage,
+  type EncryptedFile,
+} from "@/lib/media";
 import { toast } from "sonner";
 
-export function PatientDetail({ roomId }: { roomId: string }) {
+function HiddenJson({ value }: { value: unknown }) {
+  let json: string;
+  try {
+    json = JSON.stringify(value, null, 2);
+  } catch (err) {
+    json = `// could not stringify: ${
+      err instanceof Error ? err.message : String(err)
+    }`;
+  }
+  return (
+    <div className="hidden" data-event-json>
+      {json}
+    </div>
+  );
+}
+
+type MessageContent = {
+  body?: string;
+  msgtype?: string;
+  filename?: string;
+  info?: { mimetype?: string };
+  file?: EncryptedFile;
+};
+
+/**
+ * Renders an encrypted m.image attachment: fetches the ciphertext from R2 via
+ * /api/media, decrypts it client-side, and shows the resulting blob. Revokes
+ * the object URL on unmount.
+ */
+function EncryptedImage({
+  file,
+  roomId,
+  mimetype,
+  name,
+}: {
+  file: EncryptedFile;
+  roomId: string;
+  mimetype?: string;
+  name: string;
+}) {
+  const [url, setUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    let created: string | null = null;
+    fetchAndDecryptImage(file, roomId, mimetype || "image/png")
+      .then((u) => {
+        if (!active) {
+          URL.revokeObjectURL(u);
+          return;
+        }
+        created = u;
+        setUrl(u);
+      })
+      .catch((e) => {
+        if (active) setError(e instanceof Error ? e.message : String(e));
+      });
+    return () => {
+      active = false;
+      if (created) URL.revokeObjectURL(created);
+    };
+    // file.url uniquely identifies the object; key/iv are stable for it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [file.url, roomId, mimetype]);
+
+  if (error) {
+    return (
+      <div className="text-xs">
+        <div className="font-medium">{name}</div>
+        <div className="opacity-70">Couldn&apos;t load image: {error}</div>
+      </div>
+    );
+  }
+  if (!url) {
+    return <div className="text-xs opacity-70">Loading {name}…</div>;
+  }
+  return (
+    // Blob object URL — next/image isn't applicable here.
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={name}
+      className="max-h-64 max-w-full rounded-md"
+    />
+  );
+}
+
+function recordInitials(r: { firstName: string; lastName: string }): string {
+  const a = (r.firstName?.[0] ?? "").toUpperCase();
+  const b = (r.lastName?.[0] ?? "").toUpperCase();
+  return a + b || "?";
+}
+
+function ageFromDob(dob?: string): number | null {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (Number.isNaN(d.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--;
+  return age >= 0 && age < 200 ? age : null;
+}
+
+function RecordField({
+  icon: Icon,
+  label,
+  value,
+  mono,
+  multiline,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value?: string;
+  mono?: boolean;
+  multiline?: boolean;
+}) {
+  return (
+    <div className="flex gap-3 px-6 py-3">
+      <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="min-w-0 flex-1">
+        <dt className="text-xs text-muted-foreground">{label}</dt>
+        <dd
+          className={`mt-0.5 ${mono ? "font-mono text-xs break-all" : ""} ${
+            multiline ? "whitespace-pre-wrap" : "truncate"
+          }`}
+        >
+          {value || "—"}
+        </dd>
+      </div>
+    </div>
+  );
+}
+
+export function PatientDetail({
+  roomId,
+  backHref = "/",
+  backLabel = "Back to patients",
+}: {
+  roomId: string;
+  backHref?: string;
+  backLabel?: string;
+}) {
   const { client, session, ready, notReadyReason } = useMatrix();
   const [patient, setPatient] = useState<Patient | null>(null);
   const [messages, setMessages] = useState<MatrixEvent[]>([]);
   const [history, setHistory] = useState<PatientRecordRevision[]>([]);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!client) return;
@@ -67,6 +231,31 @@ export function PatientDetail({ roomId }: { roomId: string }) {
     }
   };
 
+  const onDelete = async (eventId: string | undefined) => {
+    if (!client || !ready || !eventId) return;
+    try {
+      await redactMessage(client, roomId, eventId);
+      toast.success("Message deleted");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file
+    if (!picked || !client || !ready) return;
+    setUploading(true);
+    try {
+      const meta = await uploadEncryptedImage(roomId, picked);
+      await sendImageMessage(client, roomId, meta);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (!patient) {
     return (
       <div className="text-muted-foreground">
@@ -76,60 +265,71 @@ export function PatientDetail({ roomId }: { roomId: string }) {
   }
 
   const r = patient.record;
+  const age = ageFromDob(r.dob);
 
   return (
     <div className="space-y-6">
       <div>
         <Link
-          href="/"
+          href={backHref}
           className="text-sm text-muted-foreground hover:underline"
         >
-          &larr; Back to patients
+          &larr; {backLabel}
         </Link>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[6fr_4fr] lg:items-start">
-        <div className="space-y-6">
-          <div className="rounded-lg border bg-card p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h1 className="text-2xl font-semibold">{fullName(r)}</h1>
-                <div className="text-xs text-muted-foreground font-mono mt-1">
-                  {roomId}
+      <div className="grid gap-6 lg:grid-cols-[3fr_7fr] lg:items-start">
+        <div className="flex flex-col gap-6 lg:sticky lg:top-20 lg:h-[calc(100dvh-10rem)]">
+          <div className="shrink-0 overflow-hidden rounded-xl border bg-card shadow-sm">
+            <div className="flex items-start gap-4 p-6">
+              <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-brand-gradient text-lg font-semibold text-white shadow-sm">
+                {recordInitials(r)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-xl font-semibold">
+                  {fullName(r)}
+                </h1>
+                <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                  <span>Patient record</span>
+                  {age !== null && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>{age} yrs</span>
+                    </>
+                  )}
+                </div>
+                <div className="mt-3">
+                  <Badge variant="secondary" className="gap-1">
+                    <ShieldCheck className="size-3" />
+                    End-to-end encrypted
+                  </Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <EditPatientDialog roomId={roomId} initial={editInitial} />
-                <Badge>E2E encrypted</Badge>
-              </div>
+              <EditPatientDialog roomId={roomId} initial={editInitial} />
             </div>
-            <dl className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <dt className="text-muted-foreground">Date of birth</dt>
-                <dd>{r.dob || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Phone</dt>
-                <dd>{r.phone || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Email</dt>
-                <dd>{r.email || "—"}</dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Updated</dt>
-                <dd>
-                  {r.updatedAt ? new Date(r.updatedAt).toLocaleString() : "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Times updated</dt>
-                <dd className="font-mono">{r.updatedTimes}</dd>
-              </div>
-              <div className="col-span-2">
-                <dt className="text-muted-foreground">Notes</dt>
-                <dd className="whitespace-pre-wrap">{r.notes || "—"}</dd>
-              </div>
+            <dl className="divide-y border-t text-sm">
+              <RecordField icon={Calendar} label="Date of birth" value={r.dob} />
+              <RecordField icon={Phone} label="Phone" value={r.phone} />
+              <RecordField icon={Mail} label="Email" value={r.email} />
+              <RecordField
+                icon={Clock}
+                label="Last updated"
+                value={
+                  r.updatedAt ? new Date(r.updatedAt).toLocaleString() : ""
+                }
+              />
+              <RecordField
+                icon={Pencil}
+                label="Times updated"
+                value={String(r.updatedTimes)}
+              />
+              <RecordField
+                icon={FileText}
+                label="Notes"
+                value={r.notes}
+                multiline
+              />
+              <RecordField icon={Hash} label="Room" value={roomId} mono />
             </dl>
           </div>
 
@@ -139,14 +339,14 @@ export function PatientDetail({ roomId }: { roomId: string }) {
           />
         </div>
 
-        <div className="rounded-lg border bg-card">
+        <div className="flex h-[70dvh] flex-col rounded-lg border bg-card lg:sticky lg:top-20 lg:h-[calc(100dvh-10rem)]">
           <div className="border-b px-4 py-3">
             <h2 className="font-semibold">Encrypted timeline</h2>
             <p className="text-xs text-muted-foreground">
               Messages are visible only to members of this room.
             </p>
           </div>
-          <div className="max-h-[560px] overflow-y-auto p-4 space-y-2 text-sm">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-2 text-sm">
             {messages.length === 0 && (
               <div className="text-muted-foreground text-center py-8">
                 No messages yet.
@@ -155,6 +355,18 @@ export function PatientDetail({ roomId }: { roomId: string }) {
             {messages.map((ev) => {
               const sender = ev.getSender();
               const isMe = sender === session?.userId;
+              if (ev.isRedacted()) {
+                return (
+                  <div
+                    key={ev.getId()}
+                    className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className="rounded-lg border border-dashed px-3 py-1.5 text-xs italic text-muted-foreground">
+                      Message deleted
+                    </div>
+                  </div>
+                );
+              }
               if (ev.isDecryptionFailure()) {
                 return (
                   <UndecryptableMessage
@@ -164,13 +376,33 @@ export function PatientDetail({ roomId }: { roomId: string }) {
                   />
                 );
               }
-              const content = ev.getContent() as { body?: string };
+              const content = ev.getContent() as MessageContent;
               const body = content.body ?? "";
+              const imageFile =
+                content.msgtype === "m.image" && content.file?.url
+                  ? content.file
+                  : null;
               return (
                 <div
                   key={ev.getId()}
-                  className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  className={`group flex items-center gap-1 ${
+                    isMe ? "justify-end" : "justify-start"
+                  }`}
                 >
+                  {isMe && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label="Delete message"
+                      title="Delete message"
+                      disabled={!ready}
+                      onClick={() => onDelete(ev.getId())}
+                      className="opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  )}
                   <div
                     className={`max-w-[75%] rounded-lg px-3 py-2 ${
                       isMe ? "bg-primary text-primary-foreground" : "bg-muted"
@@ -179,25 +411,60 @@ export function PatientDetail({ roomId }: { roomId: string }) {
                     {!isMe && (
                       <div className="text-xs opacity-70 mb-1">{sender}</div>
                     )}
-                    <div className="whitespace-pre-wrap break-words">{body}</div>
+                    {imageFile ? (
+                      <EncryptedImage
+                        file={imageFile}
+                        roomId={roomId}
+                        mimetype={content.info?.mimetype}
+                        name={content.body || content.filename || "image"}
+                      />
+                    ) : (
+                      <div className="whitespace-pre-wrap break-words">
+                        {body}
+                      </div>
+                    )}
+                    <HiddenJson value={ev.getEffectiveEvent()} />
                   </div>
                 </div>
               );
             })}
           </div>
-          <form onSubmit={onSend} className="border-t p-3 flex gap-2">
+          <form onSubmit={onSend} className="flex items-center gap-2 border-t p-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onPickFile}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              disabled={!ready || uploading || sending}
+              title={
+                ready ? "Attach image" : notReadyMessage(notReadyReason) || undefined
+              }
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <Paperclip className="size-4" />
+            </Button>
             <Input
               value={text}
               onChange={(e) => setText(e.target.value)}
               placeholder={
-                ready ? "Type a message…" : (notReadyMessage(notReadyReason) || "Not ready")
+                uploading
+                  ? "Uploading image…"
+                  : ready
+                    ? "Type a message…"
+                    : notReadyMessage(notReadyReason) || "Not ready"
               }
-              disabled={sending || !ready}
+              disabled={sending || uploading || !ready}
               title={notReadyMessage(notReadyReason) || undefined}
             />
             <Button
               type="submit"
-              disabled={sending || !text.trim() || !ready}
+              disabled={sending || uploading || !text.trim() || !ready}
               title={notReadyMessage(notReadyReason) || undefined}
             >
               Send
@@ -240,7 +507,7 @@ function UndecryptableMessage({
   event: MatrixEvent;
   isMe: boolean;
 }) {
-  const { client, session } = useMatrix();
+  const { client } = useMatrix();
   const wire = event.getWireContent() as {
     session_id?: string;
     sender_key?: string;
@@ -298,12 +565,7 @@ function UndecryptableMessage({
           </Badge>
           <span className="font-mono text-xs">{code}</span>
         </div>
-        {hint && (
-          <div className="text-xs text-muted-foreground">{hint}</div>
-        )}
-        <pre className="text-xs font-mono whitespace-pre-wrap break-all bg-background/60 rounded px-2 py-1.5">
-          {block}
-        </pre>
+        {hint && <div className="text-xs text-muted-foreground">{hint}</div>}
         {peerLine && (
           <div className="text-xs text-muted-foreground">{peerLine}</div>
         )}
@@ -318,6 +580,7 @@ function UndecryptableMessage({
             Copy diagnostic
           </Button>
         </div>
+        <HiddenJson value={event.getEffectiveEvent()} />
       </div>
     </div>
   );
@@ -378,8 +641,8 @@ function ProfileHistory({
   currentSelf: string | null;
 }) {
   return (
-    <div className="rounded-lg border bg-card">
-      <div className="border-b px-4 py-3">
+    <div className="flex min-h-0 flex-1 flex-col rounded-lg border bg-card">
+      <div className="shrink-0 border-b px-4 py-3">
         <h2 className="font-semibold">Profile history</h2>
         <p className="text-xs text-muted-foreground">
           {history.length === 0
@@ -388,7 +651,7 @@ function ProfileHistory({
         </p>
       </div>
       {history.length > 0 && (
-        <ol className="divide-y max-h-[480px] overflow-y-auto">
+        <ol className="min-h-0 flex-1 divide-y overflow-y-auto">
           {history.map((rev, i) => {
             const previous = history[i + 1] ?? null;
             const changes = diffRevisions(rev, previous);
@@ -435,6 +698,7 @@ function ProfileHistory({
                     ))}
                   </ul>
                 )}
+                <HiddenJson value={rev} />
               </li>
             );
           })}
