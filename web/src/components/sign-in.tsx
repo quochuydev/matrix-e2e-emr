@@ -11,10 +11,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
+import { useT } from "@/lib/i18n";
 import { toast } from "sonner";
 
 export function SignIn() {
   const { signIn, status, error } = useMatrix();
+  const t = useT();
   const [baseUrl, setBaseUrl] = useState(DEFAULT_HOMESERVER_URL);
   const [identityServerUrl, setIdentityServerUrl] = useState(
     DEFAULT_IDENTITY_SERVER_URL,
@@ -33,9 +35,7 @@ export function SignIn() {
         username: username.trim(),
         password,
       });
-      toast.success(
-        "Signed in. Enter your recovery key from the status bar to unlock encrypted history.",
-      );
+      toast.success(t("signIn.success"));
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
     } finally {
@@ -53,28 +53,25 @@ export function SignIn() {
           <span className="flex size-12 items-center justify-center rounded-xl bg-brand-gradient text-white shadow-sm">
             <HeartPulse className="size-6" />
           </span>
-          <h1 className="mt-4 text-xl font-semibold">
-            Sign in to Patient Records
-          </h1>
+          <h1 className="mt-4 text-xl font-semibold">{t("signIn.title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Each browser gets its own device. Use your Matrix username and
-            password.
+            {t("signIn.subtitle")}
           </p>
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="username">Username</Label>
+          <Label htmlFor="username">{t("signIn.username")}</Label>
           <Input
             id="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="@alice:matrix.org or alice"
+            placeholder={t("signIn.usernamePlaceholder")}
             autoComplete="username"
             required
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">{t("signIn.password")}</Label>
           <PasswordInput
             id="password"
             value={password}
@@ -88,7 +85,7 @@ export function SignIn() {
             in devtools to edit the homeserver / identity server. */}
         <div className="advanced-fields space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="baseUrl">Homeserver</Label>
+            <Label htmlFor="baseUrl">{t("signIn.homeserver")}</Label>
             <Input
               id="baseUrl"
               value={baseUrl}
@@ -97,7 +94,9 @@ export function SignIn() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="identityServerUrl">Identity server</Label>
+            <Label htmlFor="identityServerUrl">
+              {t("signIn.identityServer")}
+            </Label>
             <Input
               id="identityServerUrl"
               value={identityServerUrl}
@@ -114,18 +113,20 @@ export function SignIn() {
           className="w-full"
           disabled={submitting || status === "connecting"}
         >
-          {submitting || status === "connecting" ? "Signing in…" : "Sign in"}
+          {submitting || status === "connecting"
+            ? t("signIn.submitting")
+            : t("signIn.submit")}
         </Button>
 
         <p className="text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
+          {t("signIn.noAccount")}{" "}
           <a
             href="https://app.element.io/#/register"
             target="_blank"
             rel="noopener noreferrer"
             className="font-medium text-secure hover:underline"
           >
-            Create one
+            {t("signIn.createOne")}
           </a>
         </p>
       </form>

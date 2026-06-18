@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useMatrix } from "matrix-client/react";
 import { isClinicUser, findClinicByUserId } from "@/lib/config";
+import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 type NavItem = {
@@ -23,13 +24,14 @@ type NavItem = {
 export function Sidebar() {
   const { session } = useMatrix();
   const pathname = usePathname();
+  const t = useT();
   const isClinic = isClinicUser(session?.userId);
   const clinic = findClinicByUserId(session?.userId);
 
   const nav: NavItem[] = [
     {
       href: "/",
-      label: "Dashboard",
+      label: t("nav.dashboard"),
       icon: LayoutDashboard,
       match: (p) => p === "/",
     },
@@ -37,13 +39,13 @@ export function Sidebar() {
     isClinic
       ? {
           href: "/patients",
-          label: "Patients",
+          label: t("nav.patients"),
           icon: Users,
           match: (p) => p.startsWith("/patients"),
         }
       : {
           href: "/clinics",
-          label: "Clinics",
+          label: t("nav.clinics"),
           icon: Building2,
           match: (p) => p.startsWith("/clinics"),
         },
@@ -87,10 +89,12 @@ export function Sidebar() {
 
       <div className="border-t px-4 py-3">
         <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {isClinic ? "Clinic" : "Patient"}
+          {isClinic ? t("account.clinic") : t("account.patient")}
         </div>
         <div className="mt-0.5 truncate text-sm" title={session?.userId ?? ""}>
-          {isClinic ? (clinic?.name ?? "Clinic") : "Your account"}
+          {isClinic
+            ? (clinic?.name ?? t("account.clinic"))
+            : t("account.yourAccount")}
         </div>
         <div className="truncate font-mono text-xs text-muted-foreground">
           {session?.userId ?? "—"}
@@ -101,6 +105,7 @@ export function Sidebar() {
 }
 
 export function SidebarBrand({ className }: { className?: string }) {
+  const t = useT();
   return (
     <Link
       href="/"
@@ -113,22 +118,22 @@ export function SidebarBrand({ className }: { className?: string }) {
         <HeartPulse className="size-5" />
       </span>
       <span className="text-base font-semibold tracking-tight">
-        Patient Records
+        {t("brand.title")}
       </span>
     </Link>
   );
 }
 
 function SecurityCard() {
+  const t = useT();
   return (
     <div className="bg-brand-gradient rounded-xl p-4 text-white shadow-sm">
       <div className="flex items-center gap-2">
         <ShieldCheck className="size-4" />
-        <span className="text-sm font-semibold">End-to-end encrypted</span>
+        <span className="text-sm font-semibold">{t("security.title")}</span>
       </div>
       <p className="mt-2 text-xs leading-relaxed text-white/85">
-        Records are encrypted on this device. Only you and invited clinics can
-        read them — not the server.
+        {t("security.body")}
       </p>
     </div>
   );

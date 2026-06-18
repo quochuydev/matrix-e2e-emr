@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useMatrix } from "matrix-client/react";
+import { useT } from "@/lib/i18n";
 import { SignIn } from "./sign-in";
 import { StatusBar } from "./status-bar";
 import { Sidebar, SidebarBrand } from "./sidebar";
@@ -9,6 +10,7 @@ import { FullPageLoader } from "./full-page-loader";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { status, session, error, pendingBackup } = useMatrix();
+  const t = useT();
 
   useEffect(() => {
     if (pendingBackup <= 0) return;
@@ -25,17 +27,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   if (status === "connecting") {
-    return <FullPageLoader label="Connecting to Matrix…" />;
+    return <FullPageLoader label={t("shell.connecting")} />;
   }
 
   if (status === "error") {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
         <div className="text-destructive font-medium">
-          Couldn&apos;t connect to Matrix
+          {t("shell.connectError")}
         </div>
         <div className="text-sm text-muted-foreground max-w-md text-center break-words">
-          {error ?? "Unknown error."}
+          {error ?? t("shell.unknownError")}
         </div>
         <SignIn />
       </div>

@@ -1,19 +1,23 @@
 import type { NotReadyReason } from "matrix-client/react";
+import type { TFunc } from "@/lib/i18n";
 
-export function notReadyMessage(reason: NotReadyReason | null): string {
+export function notReadyMessage(
+  reason: NotReadyReason | null,
+  t: TFunc,
+): string {
   if (!reason) return "";
   switch (reason.kind) {
     case "not_signed_in":
-      return "Not signed in.";
+      return t("notReady.notSignedIn");
     case "reconnecting":
-      return "Reconnecting to homeserver…";
+      return t("notReady.reconnecting");
     case "catchup":
-      return "Catching up with homeserver…";
+      return t("notReady.catchup");
     case "sync_error":
-      return "Sync error — waiting for reconnection..";
+      return t("notReady.syncError");
     case "syncing":
-      return "Waiting for first sync to finish…";
+      return t("notReady.syncing");
     case "needs_recovery_key":
-      return "Enter your recovery key in the status bar to unlock this session.";
+      return t("notReady.needsRecoveryKey");
   }
 }
