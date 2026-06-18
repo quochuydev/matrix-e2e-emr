@@ -2,6 +2,7 @@
 
 import {
   ClientEvent,
+  EventStatus,
   EventType,
   MatrixEventEvent,
   MsgType,
@@ -412,12 +413,14 @@ export function subscribeRooms(
   const handler = () => cb();
   client.on(ClientEvent.Room, handler);
   client.on(RoomEvent.Timeline, handler);
+  client.on(RoomEvent.LocalEchoUpdated, handler);
   client.on(RoomEvent.Tags, handler);
   client.on(RoomEvent.Name, handler);
   client.on(MatrixEventEvent.Decrypted, handler);
   return () => {
     client.off(ClientEvent.Room, handler);
     client.off(RoomEvent.Timeline, handler);
+    client.off(RoomEvent.LocalEchoUpdated, handler);
     client.off(RoomEvent.Tags, handler);
     client.off(RoomEvent.Name, handler);
     client.off(MatrixEventEvent.Decrypted, handler);
@@ -464,6 +467,36 @@ export async function sendMessage(
     body,
   });
   await ensureSessionInBackup(client);
+}
+
+/** Optimistic delivery state of a locally-originated message. Remote messages
+ * and confirmed echoes are "sent". */
+export type SendState = "sending" | "sent" | "failed";
+
+export function messageSendState(event: MatrixEvent): SendState {
+  switch (event.status) {
+    case EventStatus.NOT_SENT:
+    case EventStatus.CANCELLED:
+      return "failed";
+    case EventStatus.ENCRYPTING:
+    case EventStatus.SENDING:
+    case EventStatus.QUEUED:
+      return "sending";
+    default:
+      // null = received from server or fully reconciled echo; SENT = accepted.
+      return "sent";
+  }
+}
+
+/** Retry a local echo that failed to send (status NOT_SENT). */
+export async function resendMessage(
+  client: MatrixClient,
+  roomId: string,
+  event: MatrixEvent,
+): Promise<void> {
+  const room = client.getRoom(roomId);
+  if (!room) throw new Error(`Room not found: ${roomId}`);
+  await client.resendEvent(event, room);
 }
 
 /** Reference to an encrypted attachment stored externally (e.g. in R2). The

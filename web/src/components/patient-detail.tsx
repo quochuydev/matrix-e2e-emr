@@ -22,7 +22,9 @@ import {
   getPatient,
   listMessages,
   listPatientHistory,
+  messageSendState,
   redactMessage,
+  resendMessage,
   sendImageMessage,
   sendMessage,
   subscribeRooms,
@@ -198,11 +200,19 @@ export function PatientDetail({
   const [messages, setMessages] = useState<MatrixEvent[]>([]);
   const [history, setHistory] = useState<PatientRecordRevision[]>([]);
   const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+
+  // Grow the composer with its content (up to a cap), and shrink on clear.
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
 
   useEffect(() => {
     if (!client) return;
@@ -227,18 +237,24 @@ export function PatientDetail({
     };
   }, [patient]);
 
-  const onSend = async (e: React.FormEvent | React.KeyboardEvent) => {
+  const onSend = (e: React.FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
-    if (!client || !ready || !text.trim()) return;
-    setSending(true);
-    try {
-      await sendMessage(client, roomId, text.trim());
-      setText("");
-    } catch (err) {
+    const body = text.trim();
+    if (!client || !ready || !body) return;
+    // Optimistic: clear the composer right away. matrix-js-sdk inserts a local
+    // echo into the timeline immediately and queues delivery, so the bubble
+    // shows up instantly with a "Sending…" state instead of blocking the UI.
+    setText("");
+    sendMessage(client, roomId, body).catch((err) => {
       toast.error(err instanceof Error ? err.message : String(err));
-    } finally {
-      setSending(false);
-    }
+    });
+  };
+
+  const onResend = (ev: MatrixEvent) => {
+    if (!client) return;
+    resendMessage(client, roomId, ev).catch((err) => {
+      toast.error(err instanceof Error ? err.message : String(err));
+    });
   };
 
   const confirmDelete = async () => {
@@ -397,6 +413,7 @@ export function PatientDetail({
                 content.msgtype === "m.image" && content.file?.url
                   ? content.file
                   : null;
+              const sendState = isMe ? messageSendState(ev) : "sent";
               return (
                 <div
                   key={ev.getId()}
@@ -404,7 +421,7 @@ export function PatientDetail({
                     isMe ? "justify-end" : "justify-start"
                   }`}
                 >
-                  {isMe && (
+                  {isMe && sendState === "sent" && (
                     <Button
                       type="button"
                       variant="ghost"
@@ -419,26 +436,49 @@ export function PatientDetail({
                     </Button>
                   )}
                   <div
-                    className={`max-w-[75%] rounded-lg px-3 py-2 ${
-                      isMe ? "bg-primary text-primary-foreground" : "bg-muted"
+                    className={`flex max-w-[75%] flex-col ${
+                      isMe ? "items-end" : "items-start"
                     }`}
                   >
-                    {!isMe && (
-                      <div className="text-xs opacity-70 mb-1">{sender}</div>
+                    <div
+                      className={`rounded-lg px-3 py-2 ${
+                        isMe ? "bg-primary text-primary-foreground" : "bg-muted"
+                      } ${sendState === "sending" ? "opacity-70" : ""}`}
+                    >
+                      {!isMe && (
+                        <div className="text-xs opacity-70 mb-1">{sender}</div>
+                      )}
+                      {imageFile ? (
+                        <EncryptedImage
+                          file={imageFile}
+                          roomId={roomId}
+                          mimetype={content.info?.mimetype}
+                          name={content.body || content.filename || "image"}
+                        />
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words">
+                          {body}
+                        </div>
+                      )}
+                      <HiddenJson value={ev.getEffectiveEvent()} />
+                    </div>
+                    {isMe && sendState === "sending" && (
+                      <span className="mt-0.5 text-[11px] text-muted-foreground">
+                        Sending…
+                      </span>
                     )}
-                    {imageFile ? (
-                      <EncryptedImage
-                        file={imageFile}
-                        roomId={roomId}
-                        mimetype={content.info?.mimetype}
-                        name={content.body || content.filename || "image"}
-                      />
-                    ) : (
-                      <div className="whitespace-pre-wrap break-words">
-                        {body}
-                      </div>
+                    {isMe && sendState === "failed" && (
+                      <span className="mt-0.5 text-[11px] text-destructive">
+                        Failed to send ·{" "}
+                        <button
+                          type="button"
+                          onClick={() => onResend(ev)}
+                          className="underline underline-offset-2 hover:no-underline"
+                        >
+                          Retry
+                        </button>
+                      </span>
                     )}
-                    <HiddenJson value={ev.getEffectiveEvent()} />
                   </div>
                 </div>
               );
@@ -457,7 +497,7 @@ export function PatientDetail({
               type="button"
               variant="outline"
               size="icon"
-              disabled={!ready || uploading || sending}
+              disabled={!ready || uploading}
               title={
                 ready ? "Attach image" : notReadyMessage(notReadyReason) || undefined
               }
@@ -466,6 +506,7 @@ export function PatientDetail({
               <Paperclip className="size-4" />
             </Button>
             <textarea
+              ref={composerRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
               onKeyDown={(e) => {
@@ -482,13 +523,13 @@ export function PatientDetail({
                     ? "Type a message… (Shift+Enter for a new line)"
                     : notReadyMessage(notReadyReason) || "Not ready"
               }
-              disabled={sending || uploading || !ready}
+              disabled={uploading || !ready}
               title={notReadyMessage(notReadyReason) || undefined}
-              className="flex max-h-40 min-h-9 w-full flex-1 resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
+              className="flex max-h-40 min-h-9 w-full flex-1 resize-none overflow-y-auto rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
             />
             <Button
               type="submit"
-              disabled={sending || uploading || !text.trim() || !ready}
+              disabled={uploading || !text.trim() || !ready}
               title={notReadyMessage(notReadyReason) || undefined}
             >
               Send
