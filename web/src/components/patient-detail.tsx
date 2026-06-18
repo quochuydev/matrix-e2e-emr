@@ -31,9 +31,17 @@ import {
 } from "matrix-client/patients";
 import { notReadyMessage } from "@/lib/not-ready-message";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { EditPatientDialog } from "./patient-form";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   fetchAndDecryptImage,
   uploadEncryptedImage,
@@ -192,6 +200,8 @@ export function PatientDetail({
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -217,7 +227,7 @@ export function PatientDetail({
     };
   }, [patient]);
 
-  const onSend = async (e: React.FormEvent) => {
+  const onSend = async (e: React.FormEvent | React.KeyboardEvent) => {
     e.preventDefault();
     if (!client || !ready || !text.trim()) return;
     setSending(true);
@@ -231,13 +241,17 @@ export function PatientDetail({
     }
   };
 
-  const onDelete = async (eventId: string | undefined) => {
-    if (!client || !ready || !eventId) return;
+  const confirmDelete = async () => {
+    if (!client || !ready || !pendingDelete) return;
+    setDeleting(true);
     try {
-      await redactMessage(client, roomId, eventId);
+      await redactMessage(client, roomId, pendingDelete);
       toast.success("Message deleted");
+      setPendingDelete(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -346,7 +360,8 @@ export function PatientDetail({
               Messages are visible only to members of this room.
             </p>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 space-y-2 text-sm">
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 text-sm">
+            <div className="mt-auto space-y-2">
             {messages.length === 0 && (
               <div className="text-muted-foreground text-center py-8">
                 No messages yet.
@@ -397,7 +412,7 @@ export function PatientDetail({
                       aria-label="Delete message"
                       title="Delete message"
                       disabled={!ready}
-                      onClick={() => onDelete(ev.getId())}
+                      onClick={() => setPendingDelete(ev.getId() ?? null)}
                       className="opacity-0 transition-opacity group-hover:opacity-100"
                     >
                       <Trash2 className="size-3.5" />
@@ -428,8 +443,9 @@ export function PatientDetail({
                 </div>
               );
             })}
+            </div>
           </div>
-          <form onSubmit={onSend} className="flex items-center gap-2 border-t p-3">
+          <form onSubmit={onSend} className="flex items-end gap-2 border-t p-3">
             <input
               ref={fileInputRef}
               type="file"
@@ -449,18 +465,26 @@ export function PatientDetail({
             >
               <Paperclip className="size-4" />
             </Button>
-            <Input
+            <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSend(e);
+                }
+              }}
+              rows={1}
               placeholder={
                 uploading
                   ? "Uploading image…"
                   : ready
-                    ? "Type a message…"
+                    ? "Type a message… (Shift+Enter for a new line)"
                     : notReadyMessage(notReadyReason) || "Not ready"
               }
               disabled={sending || uploading || !ready}
               title={notReadyMessage(notReadyReason) || undefined}
+              className="flex max-h-40 min-h-9 w-full flex-1 resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30"
             />
             <Button
               type="submit"
@@ -472,6 +496,40 @@ export function PatientDetail({
           </form>
         </div>
       </div>
+
+      <Dialog
+        open={pendingDelete !== null}
+        onOpenChange={(o) => {
+          if (!o && !deleting) setPendingDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Delete message?</DialogTitle>
+            <DialogDescription>
+              This redacts the message for everyone in the room. The content
+              can&apos;t be recovered.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose
+              render={
+                <Button variant="outline" type="button" disabled={deleting} />
+              }
+            >
+              Cancel
+            </DialogClose>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={deleting || !ready}
+              onClick={confirmDelete}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
