@@ -9,7 +9,7 @@ export default async function PatientPage({
   const { roomId } = await params;
   return (
     <AppShell>
-      <PatientDetail roomId={decodeURIComponent(roomId)} />
+      <PatientDetail roomId={decodeURIComponent(roomId)} backHref="/patients" />
     </AppShell>
   );
 }

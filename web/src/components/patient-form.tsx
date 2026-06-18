@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -43,66 +44,89 @@ function PatientFormFields({
   const set = <K extends keyof FormValues>(k: K, v: FormValues[K]) =>
     onChange({ ...values, [k]: v });
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="firstName">First name</Label>
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="firstName" className="text-sm font-medium">
+            First name
+          </Label>
           <Input
             id="firstName"
+            className="h-10"
             value={values.firstName}
             onChange={(e) => set("firstName", e.target.value)}
+            placeholder="Jane"
             required
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="lastName">Last name</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="lastName" className="text-sm font-medium">
+            Last name
+          </Label>
           <Input
             id="lastName"
+            className="h-10"
             value={values.lastName}
             onChange={(e) => set("lastName", e.target.value)}
+            placeholder="Doe"
             required
           />
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="dob">Date of birth</Label>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="dob" className="text-sm font-medium">
+            Date of birth
+          </Label>
           <Input
             id="dob"
             type="date"
+            className="h-10"
             value={values.dob ?? ""}
             onChange={(e) => set("dob", e.target.value)}
           />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="phone">Phone</Label>
+        <div className="space-y-1.5">
+          <Label htmlFor="phone" className="text-sm font-medium">
+            Phone
+          </Label>
           <Input
             id="phone"
+            type="tel"
+            className="h-10"
             value={values.phone ?? ""}
             onChange={(e) => set("phone", e.target.value)}
+            placeholder="+1 555 000 0000"
           />
         </div>
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="email">Email</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="email" className="text-sm font-medium">
+          Email
+        </Label>
         <Input
           id="email"
           type="email"
+          className="h-10"
           value={values.email ?? ""}
           onChange={(e) => set("email", e.target.value)}
+          placeholder="jane@example.com"
         />
       </div>
-      <div className="space-y-2">
-        <Label htmlFor="notes">Notes</Label>
+      <div className="space-y-1.5">
+        <Label htmlFor="notes" className="text-sm font-medium">
+          Notes
+        </Label>
         <textarea
           id="notes"
           value={values.notes ?? ""}
           onChange={(e) => set("notes", e.target.value)}
-          rows={3}
-          className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          rows={4}
+          placeholder="Allergies, ongoing conditions, anything the care team should know…"
+          className="flex w-full resize-y rounded-lg border border-input bg-transparent px-3 py-2 text-sm transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-1 focus-visible:ring-ring/50 dark:bg-input/30"
         />
       </div>
-    </>
+    </div>
   );
 }
 
@@ -225,7 +249,7 @@ export function EditPatientDialog({
           </Button>
         }
       />
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="p-6 sm:max-w-[620px]">
         {open && (
           <EditPatientForm
             roomId={roomId}
@@ -270,24 +294,27 @@ function EditPatientForm({
   };
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <DialogHeader>
-        <DialogTitle>Edit profile</DialogTitle>
+    <form onSubmit={onSubmit} className="space-y-6">
+      <DialogHeader className="gap-1.5">
+        <DialogTitle className="text-lg">Edit profile</DialogTitle>
         <DialogDescription>
           Saves a new revision in the profile thread. Older revisions are kept
           for audit.
         </DialogDescription>
       </DialogHeader>
       <PatientFormFields values={values} onChange={setValues} />
-      <DialogFooter>
+      <DialogFooter className="-mx-6 -mb-6 px-6 py-4">
+        <DialogClose render={<Button variant="outline" type="button" />}>
+          Cancel
+        </DialogClose>
         <Button
           type="submit"
           disabled={
-                submitting ||
-                !values.firstName.trim() ||
-                !values.lastName.trim() ||
-                !ready
-              }
+            submitting ||
+            !values.firstName.trim() ||
+            !values.lastName.trim() ||
+            !ready
+          }
           title={notReadyMessage(notReadyReason) || undefined}
         >
           {submitting ? "Saving…" : "Save changes"}
