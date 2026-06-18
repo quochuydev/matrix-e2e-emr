@@ -23,9 +23,9 @@ import {
 import { notReadyMessage } from "@/lib/not-ready-message";
 import { toast } from "sonner";
 
-type FormValues = Omit<PatientRecord, "updatedAt" | "updatedTimes">;
+export type FormValues = Omit<PatientRecord, "updatedAt" | "updatedTimes">;
 
-const EMPTY: FormValues = {
+export const EMPTY: FormValues = {
   firstName: "",
   lastName: "",
   dob: "",
@@ -34,7 +34,7 @@ const EMPTY: FormValues = {
   notes: "",
 };
 
-function PatientFormFields({
+export function PatientFormFields({
   values,
   onChange,
 }: {
@@ -143,7 +143,11 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
     e.preventDefault();
     if (!client || !ready) return;
     const inviteId = inviteInput.trim();
-    if (inviteId && !MATRIX_ID_RE.test(inviteId)) {
+    if (!inviteId) {
+      toast.error("A Matrix user to invite is required.");
+      return;
+    }
+    if (!MATRIX_ID_RE.test(inviteId)) {
       toast.error(
         `Not a valid Matrix user ID: ${inviteId}. Expected @user:server.`,
       );
@@ -152,13 +156,11 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
     setSubmitting(true);
     try {
       await createPatient(client, values, {
-        inviteUserIds: inviteId ? [inviteId] : [],
+        inviteUserIds: [inviteId],
       });
       const display = `${values.firstName} ${values.lastName}`.trim();
       toast.success(
-        inviteId
-          ? `Patient room created for ${display}; invited ${inviteId}.`
-          : `Patient room created for ${display}`,
+        `Patient room created for ${display}; invited ${inviteId}.`,
       );
       setValues(EMPTY);
       setInviteInput("");
@@ -190,7 +192,7 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
           </DialogHeader>
           <PatientFormFields values={values} onChange={setValues} />
           <div className="space-y-2">
-            <Label htmlFor="invite">Invite Matrix user (optional)</Label>
+            <Label htmlFor="invite">Invite Matrix user</Label>
             <Input
               id="invite"
               value={inviteInput}
@@ -198,6 +200,7 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
               placeholder="@alice:example.org"
               autoComplete="off"
               spellCheck={false}
+              required
             />
             <p className="text-xs text-muted-foreground">
               They&apos;ll be invited to the room and can decrypt every
@@ -211,6 +214,7 @@ export function NewPatientDialog({ onCreated }: { onCreated?: () => void }) {
                 submitting ||
                 !values.firstName.trim() ||
                 !values.lastName.trim() ||
+                !inviteInput.trim() ||
                 !ready
               }
               title={notReadyMessage(notReadyReason) || undefined}

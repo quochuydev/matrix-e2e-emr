@@ -248,6 +248,20 @@ export async function createPatient(
   return roomId;
 }
 
+/**
+ * Patient-initiated counterpart of {@link createPatient}: the patient creates
+ * the encrypted, PATIENT_TAG'd record room, invites the clinic, and stores
+ * their own profile as the root record. Keys are pre-shared with the clinic so
+ * it can decrypt the full history once it accepts the invite.
+ */
+export async function joinClinic(
+  client: MatrixClient,
+  clinicUserId: string,
+  profile: Omit<PatientRecord, "updatedAt" | "updatedTimes">,
+): Promise<string> {
+  return createPatient(client, profile, { inviteUserIds: [clinicUserId] });
+}
+
 export async function updatePatient(
   client: MatrixClient,
   roomId: string,
@@ -443,6 +457,31 @@ export function getPatient(
       updatedTimes: 0,
     },
   };
+}
+
+/** A patient room's other members — i.e. everyone except the signed-in
+ * clinician. These are the patient (and any co-invitees) Matrix user IDs. */
+export type PatientMember = {
+  userId: string;
+  /** "join" once they've accepted, "invite" while still pending. */
+  membership: string;
+};
+
+export function getPatientMembers(
+  client: MatrixClient,
+  roomId: string,
+): PatientMember[] {
+  const room = client.getRoom(roomId);
+  if (!room) return [];
+  const self = client.getUserId();
+  return room
+    .getMembers()
+    .filter(
+      (m) =>
+        m.userId !== self &&
+        (m.membership === "join" || m.membership === "invite"),
+    )
+    .map((m) => ({ userId: m.userId, membership: m.membership ?? "" }));
 }
 
 export function listMessages(

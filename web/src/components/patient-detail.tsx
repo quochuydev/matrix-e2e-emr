@@ -13,6 +13,7 @@ import {
   Phone,
   ShieldCheck,
   Trash2,
+  User,
 } from "lucide-react";
 import type { MatrixEvent } from "matrix-js-sdk";
 import { useMatrix, usePeerKeyShareState } from "matrix-client/react";
@@ -20,6 +21,7 @@ import { requestKeyFromPeers } from "matrix-client";
 import {
   fullName,
   getPatient,
+  getPatientMembers,
   listMessages,
   listPatientHistory,
   messageSendState,
@@ -29,6 +31,7 @@ import {
   sendMessage,
   subscribeRooms,
   type Patient,
+  type PatientMember,
   type PatientRecordRevision,
 } from "matrix-client/patients";
 import { notReadyMessage } from "@/lib/not-ready-message";
@@ -197,6 +200,7 @@ export function PatientDetail({
 }) {
   const { client, session, ready, notReadyReason } = useMatrix();
   const [patient, setPatient] = useState<Patient | null>(null);
+  const [members, setMembers] = useState<PatientMember[]>([]);
   const [messages, setMessages] = useState<MatrixEvent[]>([]);
   const [history, setHistory] = useState<PatientRecordRevision[]>([]);
   const [text, setText] = useState("");
@@ -218,6 +222,7 @@ export function PatientDetail({
     if (!client) return;
     const refresh = () => {
       setPatient(getPatient(client, roomId));
+      setMembers(getPatientMembers(client, roomId));
       setMessages(listMessages(client, roomId));
       setHistory(listPatientHistory(client, roomId));
     };
@@ -328,6 +333,25 @@ export function PatientDetail({
                     </>
                   )}
                 </div>
+                {members.length > 0 && (
+                  <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                    {members.map((m) => (
+                      <span
+                        key={m.userId}
+                        className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground"
+                        title={m.userId}
+                      >
+                        <User className="size-3 shrink-0" />
+                        <span className="truncate">{m.userId}</span>
+                        {m.membership === "invite" && (
+                          <span className="font-sans text-[10px] text-amber-600">
+                            invited
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-3">
                   <Badge variant="secondary" className="gap-1">
                     <ShieldCheck className="size-3" />
