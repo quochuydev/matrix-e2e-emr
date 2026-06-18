@@ -99,20 +99,6 @@ flowchart LR
     style PatientFeatures fill:#ffffff,stroke:#000000,stroke-width:2px,color:#000000
 ```
 
-See `docs/v1.md` for per-flow sequence diagrams.
-
-## Package interactions
-
-The repo is a npm workspace with two packages:
-
-- **`web/`** — Next.js app. Owns UI, routing, app-domain config (clinics), and copy. Talks to Matrix only through `matrix-client`.
-- **`packages/matrix-client/`** — Matrix wrapper. Three entrypoints:
-  - `matrix-client` — core (`createMatrixClient`, `loginWithPassword`, `unlockWithSecurityKey`, `wipeLocalMatrixData`, …)
-  - `matrix-client/react` — `MatrixProvider`, `useMatrix`, `usePatientInvites`
-  - `matrix-client/patients` — domain helpers (`createPatient`, `listPatients`, `subscribeRooms`, …)
-
-The package depends on `matrix-js-sdk`; the web app never imports `matrix-js-sdk` directly.
-
 ### Sign in and session bootstrap
 
 ```mermaid
@@ -140,8 +126,6 @@ sequenceDiagram
     Core-->>Hook: client
     Hook-->>UI: ready=false<br/>notReadyReason={kind:"needs_recovery_key"}
 ```
-
-The provider blocks `ready` on `keyUnlockedThisSession` until the user proves they hold the recovery key — see next diagram.
 
 ### Unlock recovery key (the access gate)
 
@@ -173,8 +157,6 @@ sequenceDiagram
     Hook-->>UI: ready=true, notReadyReason=null
 ```
 
-`notReadyReason` is a typed union from `matrix-client/react`. The web app's `notReadyMessage()` helper converts it to user-facing copy — copy lives in the app, not the package.
-
 ### Create patient (mutation with E2EE)
 
 ```mermaid
@@ -202,8 +184,6 @@ sequenceDiagram
     SDK->>HS: PUT /room_keys/keys (backup)
     Patients-->>UI: roomId
 ```
-
-`patient-form.tsx` only knows about the typed `PatientRecord` shape and the `createPatient` call — it never touches `matrix-js-sdk` types directly. The same pattern applies to `updatePatient`, `sendMessage`, `deletePatient`, etc.
 
 ## TI-Messenger reference architecture
 
