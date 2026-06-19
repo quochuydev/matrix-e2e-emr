@@ -1,9 +1,9 @@
 export type Locale = "de" | "en";
 
 /** Languages offered in the switcher, in display order. */
-export const LOCALES: { code: Locale; label: string }[] = [
-  { code: "de", label: "Deutsch" },
-  { code: "en", label: "English" },
+export const LOCALES: { code: Locale; label: string; flag: string }[] = [
+  { code: "de", label: "Deutsch", flag: "🇩🇪" },
+  { code: "en", label: "English", flag: "🇬🇧" },
 ];
 
 // English is the source of truth: its keys define the translation surface, and

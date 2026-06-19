@@ -11,8 +11,7 @@ import {
 } from "@/components/ui/popover";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDownIcon, CopyIcon } from "lucide-react";
-import { useI18n, LOCALES } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
 import { copy, formatAgo, StatusPill, syncLabel } from "./helpers";
 
 /**
@@ -39,7 +38,7 @@ export function AccountPopover({
   } = useMatrix();
   const verification = useDeviceVerification();
   const deviceVerified = verification?.deviceVerified ?? null;
-  const { t, locale, setLocale } = useI18n();
+  const { t } = useI18n();
 
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -172,30 +171,6 @@ export function AccountPopover({
               </button>
             </div>
           )}
-        </div>
-        <div className="border-t -mx-3" />
-        <div className="space-y-1.5">
-          <Label className="text-xs text-muted-foreground">
-            {t("account.language")}
-          </Label>
-          <div className="flex gap-1">
-            {LOCALES.map((option) => (
-              <Button
-                key={option.code}
-                type="button"
-                variant={locale === option.code ? "secondary" : "outline"}
-                size="sm"
-                className={cn(
-                  "flex-1",
-                  locale === option.code && "pointer-events-none",
-                )}
-                aria-pressed={locale === option.code}
-                onClick={() => setLocale(option.code)}
-              >
-                {option.label}
-              </Button>
-            ))}
-          </div>
         </div>
         <div className="border-t -mx-3" />
         <div className="flex flex-col gap-1">

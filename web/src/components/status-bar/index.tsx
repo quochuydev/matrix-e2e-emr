@@ -6,6 +6,7 @@ import { notReadyMessage } from "@/lib/not-ready-message";
 import { useT } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { AccountPopover } from "./account-popover";
+import { LocaleSwitcher } from "./locale-switcher";
 import { RecoveryKeyDialog } from "./recovery-key-dialog";
 import { ResetBackupDialog } from "./reset-backup-dialog";
 import { SignOutDialog } from "./sign-out-dialog";
@@ -50,6 +51,7 @@ export function StatusBar() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <LocaleSwitcher />
           <AccountPopover
             onOpenRecoveryKey={() => setKeyOpen(true)}
             onOpenReset={() => setResetOpen(true)}
