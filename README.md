@@ -50,6 +50,7 @@ flowchart LR
             subgraph PatientFeatures["Patient features"]
                 direction TB
                 ViewHolders["Get connected clinics"]:::command
+                ExploreJoin["Explore / join clinics"]:::command
                 ReadMsg["Read clinic messages"]:::command
                 RespondInvite["Accept/Decline invites"]:::command
             end
@@ -68,12 +69,14 @@ flowchart LR
     Ready --> ClinicMsg
     Ready --> SendInvite
     Ready --> ViewHolders
+    Ready --> ExploreJoin
     Ready --> ReadMsg
     Ready --> RespondInvite
     PatientCRUD --> Crypto
     ClinicMsg --> Crypto
     SendInvite --> Crypto
     ViewHolders --> Crypto
+    ExploreJoin --> Crypto
     ReadMsg --> Crypto
     RespondInvite --> Crypto
     Crypto <--> Rooms

@@ -35,7 +35,7 @@ flowchart LR
     B4(["generateRecoveryKey"]):::orange
     B5(["wipeLocalMatrixData<br/>nuke all browser state"]):::orange
     B6(["MatrixProvider + useMatrix<br/>React lifecycle + sync state"]):::cyan
-    B7(["createPatient / updatePatient<br/>rooms-as-records"]):::cyan
+    B7(["createPatient / updatePatient / joinClinic<br/>rooms-as-records"]):::cyan
     B8(["usePatientInvites"]):::cyan
     B9(["requestKeyFromPeers<br/>cross-device session forwarding for UTDs"]):::orange
   end
@@ -145,6 +145,7 @@ flowchart TB
     Rev1(["event: patient.record thread reply<br/>updatedTimes 1"]):::green
     Rev2(["event: patient.record thread reply<br/>updatedTimes 2 - current"]):::green
     Msg1(["event: m.room.message<br/>chat with shared clinicians"]):::cyan
+    Img1(["event: m.room.message msgtype m.image<br/>encrypted file attachment"]):::cyan
   end
 
   Pthread -.->|points to| Root
